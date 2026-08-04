@@ -19,6 +19,7 @@ from app_config import ConfigManager
 
 RAW_BASE = "https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
 API_BASE = "https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+GIT_TREE_URL = "https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -27,6 +28,35 @@ def sha256_bytes(data: bytes) -> str:
 
 def sha256_file(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
+
+
+def git_blob_sha(data: bytes) -> str:
+    """计算 Git blob 的 SHA-1（与 GitHub API 返回的文件 sha 一致）"""
+    return hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\x00" + data).hexdigest()
+
+
+def parse_tree_shas(tree_json: dict) -> dict:
+    """把 git trees API 的响应解析为 {path: blob_sha}"""
+    result = {}
+    for item in tree_json.get("tree", []):
+        if item.get("type") == "blob":
+            result[item.get("path")] = item.get("sha")
+    return result
+
+
+def filter_changed(data_dir: Path, files, remote_shas: dict):
+    """对比本地与远程哈希，返回 (需要下载的文件, 远程缺失的文件)"""
+    changed = []
+    missing = []
+    for path in files:
+        remote_sha = remote_shas.get(path)
+        if remote_sha is None:
+            missing.append(path)
+            continue
+        local = data_dir / path
+        if not local.exists() or git_blob_sha(local.read_bytes()) != remote_sha:
+            changed.append(path)
+    return changed, missing
 
 
 def file_url(config: ConfigManager, path: str) -> str:
@@ -75,7 +105,13 @@ class DataSyncManager(QObject):
         self._done = 0
         self._errors = []
         # 用 0 延时保证信号在事件循环启动后再发出
-        QTimer.singleShot(0, self._next)
+        QTimer.singleShot(0, self._begin)
+
+    def _begin(self):
+        if self._mode == "pull":
+            self._pull_stage1()
+        else:
+            self._next()
 
     # ---------- 请求构造 ----------
 
@@ -109,6 +145,40 @@ class DataSyncManager(QObject):
             self._push_file(path)
 
     # ---------- 拉取 ----------
+
+    def _pull_stage1(self):
+        """先用一次请求获取远程文件哈希清单，只下载有变化的文件"""
+        url = GIT_TREE_URL.format(
+            owner=self.config.sync_repo_owner,
+            repo=self.config.sync_repo_name,
+            branch=self.config.sync_branch,
+        )
+        req = self._request(url, token=self._token(), accept_raw=False)
+        reply = self._manager.get(req)
+        reply.finished.connect(lambda r=reply: self._on_tree(r))
+
+    def _on_tree(self, reply):
+        try:
+            if reply.error() != QNetworkReply.NoError:
+                self._errors.append(f"获取远程哈希清单失败: {reply.errorString()}")
+            else:
+                remote_shas = parse_tree_shas(
+                    json.loads(reply.readAll().data().decode("utf-8"))
+                )
+                changed, missing = filter_changed(
+                    self.config.data_dir, self._queue, remote_shas
+                )
+                for path in missing:
+                    self._errors.append(f"远程不存在: {path}")
+                self._queue = changed
+                self._total = len(changed)
+                self._done = 0
+        except Exception as e:
+            self._errors.append(f"获取远程哈希清单失败: {e}")
+        finally:
+            reply.deleteLater()
+            # 无论是否拿到清单，都进入逐文件阶段（失败时回退为全量下载）
+            self._next()
 
     def _pull_file(self, path):
         url = file_url(self.config, path)
@@ -173,6 +243,13 @@ class DataSyncManager(QObject):
             else:
                 info = json.loads(reply.readAll().data().decode("utf-8"))
                 sha = info.get("sha")
+                # 本地与远程哈希一致时跳过上传
+                local = self.config.data_dir / path
+                if sha and local.exists() and git_blob_sha(local.read_bytes()) == sha:
+                    self.file_synced.emit(path, False)
+                    reply.deleteLater()
+                    self._next()
+                    return
         except Exception as e:
             self._errors.append(f"推送 {path}: {e}")
             reply.deleteLater()
