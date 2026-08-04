@@ -93,6 +93,8 @@ class LoginWindow(QDialog):
         self._message_color = ERROR_COLOR
         self._sync_ready = False
         self._sync_status = "正在同步用户信息，请稍候…"
+        self._page = "login"   # "login" 或 "register"
+        self._hold_ticks = 0   # 提示保持全亮的时间（50ms 一帧）
 
         self._setup_ui()
         self._apply_styles()
@@ -148,8 +150,17 @@ class LoginWindow(QDialog):
         self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.setGeometry(70, 235, 280, 42)
         self.password_input.setAlignment(Qt.AlignCenter)
-        self.password_input.returnPressed.connect(self._attempt_login)
+        self.password_input.returnPressed.connect(self._on_submit)
         self._add_shadow(self.password_input)
+
+        # 确认密码输入框（注册页使用，默认隐藏）
+        self.confirm_input = ShakeableLineEdit(self)
+        self.confirm_input.setPlaceholderText("确认密码")
+        self.confirm_input.setEchoMode(QLineEdit.Password)
+        self.confirm_input.setAlignment(Qt.AlignCenter)
+        self.confirm_input.returnPressed.connect(self._do_register)
+        self.confirm_input.setVisible(False)
+        self._add_shadow(self.confirm_input)
 
         # 记住我
         self.remember_check = QCheckBox("记住我", self)
@@ -158,7 +169,7 @@ class LoginWindow(QDialog):
         # 登录按钮
         self.login_btn = QPushButton("登  录", self)
         self.login_btn.setGeometry(70, 335, 280, 44)
-        self.login_btn.clicked.connect(self._attempt_login)
+        self.login_btn.clicked.connect(self._on_submit)
         self._add_shadow(self.login_btn)
 
         # 错误提示标签
@@ -171,7 +182,16 @@ class LoginWindow(QDialog):
         self.register_btn = QPushButton("注册新账号", self)
         self.register_btn.setGeometry(70, 430, 280, 34)
         self.register_btn.setCursor(Qt.PointingHandCursor)
-        self.register_btn.clicked.connect(self._open_register)
+        self.register_btn.clicked.connect(self._show_register_page)
+
+        # 返回按钮（注册页左上角 ←，点击回到登录页）
+        self.back_btn = QPushButton("←", self)
+        self.back_btn.setGeometry(12, 11, 34, 34)
+        self.back_btn.setCursor(Qt.PointingHandCursor)
+        self.back_btn.setFocusPolicy(Qt.NoFocus)
+        self.back_btn.setToolTip("返回登录")
+        self.back_btn.clicked.connect(self._show_login_page)
+        self.back_btn.setVisible(False)
 
         # 关闭按钮（右上角圆形 ×，悬停变红）
         self.close_btn = QPushButton("✕", self)
@@ -185,7 +205,7 @@ class LoginWindow(QDialog):
         self.refresh_btn.setGeometry(338, 11, 34, 34)
         self.refresh_btn.setCursor(Qt.PointingHandCursor)
         self.refresh_btn.setFocusPolicy(Qt.NoFocus)
-        # self.refresh_btn.setToolTip("重新同步")
+        self.refresh_btn.setToolTip("重新同步")
         self.refresh_btn.clicked.connect(lambda: self.retry_sync.emit())
         self.refresh_btn.setVisible(False)
 
@@ -251,6 +271,7 @@ class LoginWindow(QDialog):
         """
         self.username_input.setStyleSheet(input_style)
         self.password_input.setStyleSheet(input_style)
+        self.confirm_input.setStyleSheet(input_style)
 
         self.remember_check.setStyleSheet(f"""
             QCheckBox {{
@@ -360,6 +381,26 @@ class LoginWindow(QDialog):
             }}
         """)
 
+        self.back_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: rgba(200, 180, 210, 140);
+                font-family: "Microsoft YaHei";
+                font-size: 16px;
+                font-weight: bold;
+                border: none;
+                border-radius: 17px;
+                padding: 0;
+                background: transparent;
+            }}
+            QPushButton:hover {{
+                color: white;
+                background: rgba(255, 140, 180, 210);
+            }}
+            QPushButton:pressed {{
+                background: rgba(220, 90, 140, 255);
+            }}
+        """)
+
     # ── 绘制背景 ────────────────────────────────────────
 
     def paintEvent(self, event):
@@ -410,8 +451,11 @@ class LoginWindow(QDialog):
     # ── 错误提示淡出 ────────────────────────────────────
 
     def _fade_error(self):
+        if self._hold_ticks > 0:
+            self._hold_ticks -= 1
+            return
         if self._error_alpha > 0.01:
-            self._error_alpha *= 0.85
+            self._error_alpha *= 0.90
             c = self._message_color
             self.error_label.setStyleSheet(f"""
                 QLabel {{
@@ -432,6 +476,7 @@ class LoginWindow(QDialog):
         self.error_label.setText(message)
         self.error_label.setVisible(True)
         self._error_alpha = 1.0
+        self._hold_ticks = 20  # 保持约 1 秒再开始淡出
         self._error_timer.stop()
         self._error_timer.start(50)
         self.username_input.shake()
@@ -443,23 +488,101 @@ class LoginWindow(QDialog):
         self.error_label.setText(message)
         self.error_label.setVisible(True)
         self._error_alpha = 1.0
+        self._hold_ticks = 20
         self._error_timer.stop()
         self._error_timer.start(50)
 
     # ── 登录逻辑 ────────────────────────────────────────
 
-    def _open_register(self):
+    def _on_submit(self):
+        """登录页 = 登录，注册页 = 注册"""
+        if self._page == "login":
+            self._attempt_login()
+        else:
+            self._do_register()
+
+    def _show_login_page(self):
+        """回到登录页"""
+        self._page = "login"
+        self.title_label.setText("✦  Commemorate  ✦")
+        self.subtitle_label.setVisible(True)
+        self.divider_label.setVisible(True)
+        self.username_input.setGeometry(70, 180, 280, 42)
+        self.password_input.setGeometry(70, 235, 280, 42)
+        self.confirm_input.setVisible(False)
+        self.remember_check.setVisible(True)
+        self.login_btn.setText("登  录")
+        self.login_btn.setGeometry(70, 335, 280, 44)
+        self.register_btn.setVisible(True)
+        self.back_btn.setVisible(False)
+        self.error_label.setVisible(False)
+        self._error_timer.stop()
+
+    def _show_register_page(self):
+        """切换到注册页"""
         if not self._sync_ready:
-            # 保持同步状态提示，只抖动输入框，不触发淡出
             self._error_timer.stop()
             self.username_input.shake()
             return
-        dlg = RegisterDialog(self.config, self)
-        if dlg.exec_() == RegisterDialog.Accepted:
-            self.username_input.setText(dlg.username())
-            self.password_input.clear()
-            self.password_input.setFocus()
-            self._show_info("注册成功，请登录")
+        self._page = "register"
+        self.title_label.setText("✦  注册新账号  ✦")
+        self.subtitle_label.setVisible(False)
+        self.divider_label.setVisible(False)
+        self.username_input.setGeometry(70, 150, 280, 42)
+        self.password_input.setGeometry(70, 205, 280, 42)
+        self.confirm_input.setGeometry(70, 260, 280, 42)
+        self.confirm_input.setVisible(True)
+        self.remember_check.setVisible(False)
+        self.login_btn.setText("注  册")
+        self.login_btn.setGeometry(70, 330, 280, 44)
+        self.register_btn.setVisible(False)
+        self.back_btn.setVisible(True)
+        self.error_label.setVisible(False)
+        self._error_timer.stop()
+        self.password_input.clear()
+        self.confirm_input.clear()
+        self.username_input.setFocus()
+
+    def _do_register(self):
+        """注册新账号（与登录同一窗口）"""
+        username = self.username_input.text().strip()
+        password = self.password_input.text()
+        confirm = self.confirm_input.text()
+
+        if not self._sync_ready:
+            self._error_timer.stop()
+            self.username_input.shake()
+            self.password_input.shake()
+            self.confirm_input.shake()
+            return
+
+        if not username or not password:
+            self._show_error("请输入用户名和密码")
+            return
+        if len(password) < 4:
+            self._show_error("密码至少需要 4 位")
+            return
+        if password != confirm:
+            self._show_error("两次输入的密码不一致")
+            return
+        if not self.config.auth_allow_register:
+            self._show_error("暂未开放注册")
+            return
+
+        users = self.config.all_users()
+        if any(u.get("username") == username for u in users):
+            self._show_error("该用户名已存在")
+            return
+        if len(users) >= self.config.auth_max_users:
+            self._show_error(f"用户数量已达上限（{self.config.auth_max_users} 个）")
+            return
+
+        self.config.add_registered_user(username, hash_password(password))
+        self._show_login_page()
+        self.username_input.setText(username)
+        self.password_input.clear()
+        self.password_input.setFocus()
+        self._show_info("注册成功，请登录")
 
     def _attempt_login(self):
         username = self.username_input.text().strip()
@@ -605,280 +728,6 @@ class LoginWindow(QDialog):
         self.accept()
 
     # ── 鼠标事件（拖拽窗口 & 关闭按钮）──────────────────
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            # 点击输入框之外的区域：取消输入框焦点
-            self.username_input.clearFocus()
-            self.password_input.clearFocus()
-            self._drag_start = event.globalPos() - self.frameGeometry().topLeft()
-
-    def mouseMoveEvent(self, event):
-        if hasattr(self, '_drag_start') and event.buttons() & Qt.LeftButton:
-            self.move(event.globalPos() - self._drag_start)
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
-            self.reject()
-        else:
-            super().keyPressEvent(event)
-
-
-# ============================================================
-#  RegisterDialog — 注册新账号
-# ============================================================
-
-class RegisterDialog(QDialog):
-    """注册新账号（受远程设置 allow_register / max_users 控制）"""
-
-    def __init__(self, config: ConfigManager, parent=None):
-        super().__init__(parent)
-        self.config = config
-        self._registered_username = ""
-        self._error_alpha = 0.0
-        self._fade_in = 0.0
-
-        self.setWindowTitle("注册新账号")
-        self.setWindowFlags(
-            Qt.FramelessWindowHint
-            | Qt.Dialog
-            | Qt.Tool
-            | Qt.WindowStaysOnTopHint
-        )
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(420, 460)
-        self._center_on_screen()
-
-        self._setup_ui()
-        self._apply_styles()
-
-        self._error_timer = QTimer(self)
-        self._error_timer.timeout.connect(self._fade_error)
-        self._fade_timer = QTimer(self)
-        self._fade_timer.timeout.connect(self._tick_fade)
-        self._fade_timer.start(16)
-
-    def username(self):
-        return self._registered_username
-
-    def _center_on_screen(self):
-        screen = QApplication.primaryScreen().availableGeometry()
-        x = (screen.width() - self.width()) // 2
-        y = (screen.height() - self.height()) // 2
-        self.move(x, y)
-
-    def _setup_ui(self):
-        self.title_label = QLabel("✦  注册新账号  ✦", self)
-        self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setGeometry(0, 50, 420, 45)
-
-        self.username_input = ShakeableLineEdit(self)
-        self.username_input.setPlaceholderText("用户名")
-        self.username_input.setGeometry(70, 135, 280, 42)
-        self.username_input.setAlignment(Qt.AlignCenter)
-
-        self.password_input = ShakeableLineEdit(self)
-        self.password_input.setPlaceholderText("密码（至少 4 位）")
-        self.password_input.setEchoMode(QLineEdit.Password)
-        self.password_input.setGeometry(70, 190, 280, 42)
-        self.password_input.setAlignment(Qt.AlignCenter)
-
-        self.confirm_input = ShakeableLineEdit(self)
-        self.confirm_input.setPlaceholderText("确认密码")
-        self.confirm_input.setEchoMode(QLineEdit.Password)
-        self.confirm_input.setGeometry(70, 245, 280, 42)
-        self.confirm_input.setAlignment(Qt.AlignCenter)
-        self.confirm_input.returnPressed.connect(self._do_register)
-
-        self.register_btn = QPushButton("注  册", self)
-        self.register_btn.setGeometry(70, 320, 280, 44)
-        self.register_btn.setCursor(Qt.PointingHandCursor)
-        self.register_btn.clicked.connect(self._do_register)
-
-        self.error_label = QLabel(self)
-        self.error_label.setAlignment(Qt.AlignCenter)
-        self.error_label.setGeometry(70, 385, 280, 30)
-        self.error_label.setVisible(False)
-
-        self.close_btn = QPushButton("✕", self)
-        self.close_btn.setGeometry(378, 11, 34, 34)
-        self.close_btn.setCursor(Qt.PointingHandCursor)
-        self.close_btn.setFocusPolicy(Qt.NoFocus)
-        self.close_btn.clicked.connect(self.reject)
-
-    def _apply_styles(self):
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                color: {TEXT_LIGHT.name()};
-                font-family: "Microsoft YaHei";
-                font-size: 22px;
-                font-weight: bold;
-                background: transparent;
-            }}
-        """)
-        input_style = f"""
-            QLineEdit {{
-                background: rgba(30, 15, 50, 180);
-                color: {TEXT_LIGHT.name()};
-                font-family: "Microsoft YaHei";
-                font-size: 15px;
-                border: 1.5px solid {INPUT_BORDER.name()};
-                border-radius: 10px;
-                padding: 6px 16px;
-            }}
-            QLineEdit:focus {{
-                border-color: {INPUT_FOCUS.name()};
-                background: rgba(40, 20, 60, 200);
-            }}
-            QLineEdit::placeholder {{
-                color: rgba(200, 180, 210, 100);
-            }}
-        """
-        self.username_input.setStyleSheet(input_style)
-        self.password_input.setStyleSheet(input_style)
-        self.confirm_input.setStyleSheet(input_style)
-
-        self.register_btn.setStyleSheet(f"""
-            QPushButton {{
-                color: white;
-                font-family: "Microsoft YaHei";
-                font-size: 17px;
-                font-weight: bold;
-                border: none;
-                border-radius: 22px;
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 {BTN_GRAD_TOP.name()},
-                    stop:1 {BTN_GRAD_BOT.name()});
-            }}
-            QPushButton:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 rgba(240,100,150,255),
-                    stop:1 rgba(180,50,90,255));
-            }}
-            QPushButton:pressed {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 rgba(180,50,90,255),
-                    stop:1 rgba(130,20,50,255));
-            }}
-        """)
-
-        self.error_label.setStyleSheet(f"""
-            QLabel {{
-                color: {ERROR_COLOR.name()};
-                font-family: "Microsoft YaHei";
-                font-size: 12px;
-                background: transparent;
-            }}
-        """)
-
-        self.close_btn.setStyleSheet(f"""
-            QPushButton {{
-                color: rgba(200, 180, 210, 140);
-                font-family: "Microsoft YaHei";
-                font-size: 16px;
-                font-weight: bold;
-                border: none;
-                border-radius: 17px;
-                padding: 0;
-                background: transparent;
-            }}
-            QPushButton:hover {{
-                color: white;
-                background: rgba(230, 60, 80, 220);
-            }}
-            QPushButton:pressed {{
-                background: rgba(190, 40, 60, 255);
-            }}
-        """)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHints(QPainter.Antialiasing)
-        w, h = self.width(), self.height()
-
-        bg = QLinearGradient(0, 0, 0, h)
-        bg.setColorAt(0.0, BG_TOP)
-        bg.setColorAt(0.4, BG_MID)
-        bg.setColorAt(1.0, BG_BOT)
-        painter.setBrush(QBrush(bg))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(2, 2, w - 4, h - 4, 24, 24)
-
-        glow = QRadialGradient(w / 2, 60, 200)
-        gc = QColor(255, 140, 180, int(40 * self._fade_in))
-        glow.setColorAt(0.0, gc)
-        glow.setColorAt(1.0, QColor(255, 140, 180, 0))
-        painter.setBrush(QBrush(glow))
-        painter.drawEllipse(QPointF(w / 2, 60), 200, 120)
-
-        border_c = QColor(180, 140, 200, int(60 * self._fade_in))
-        painter.setPen(QPen(border_c, 1.5))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(3, 3, w - 6, h - 6, 23, 23)
-        painter.end()
-
-    def _tick_fade(self):
-        if self._fade_in < 1.0:
-            self._fade_in = min(1.0, self._fade_in + 0.04)
-            self.update()
-        else:
-            self._fade_timer.stop()
-
-    def _fade_error(self):
-        if self._error_alpha > 0.01:
-            self._error_alpha *= 0.85
-            self.error_label.setStyleSheet(f"""
-                QLabel {{
-                    color: rgba(255, 110, 130, {int(255 * self._error_alpha)});
-                    font-family: "Microsoft YaHei";
-                    font-size: 12px;
-                    background: transparent;
-                }}
-            """)
-        else:
-            self._error_alpha = 0.0
-            self.error_label.setVisible(False)
-            self._error_timer.stop()
-
-    def _show_error(self, message):
-        self.error_label.setText(message)
-        self.error_label.setVisible(True)
-        self._error_alpha = 1.0
-        self._error_timer.stop()
-        self._error_timer.start(50)
-        self.username_input.shake()
-        self.password_input.shake()
-        self.confirm_input.shake()
-
-    def _do_register(self):
-        username = self.username_input.text().strip()
-        password = self.password_input.text()
-        confirm = self.confirm_input.text()
-
-        if not username or not password:
-            self._show_error("请输入用户名和密码")
-            return
-        if len(password) < 4:
-            self._show_error("密码至少需要 4 位")
-            return
-        if password != confirm:
-            self._show_error("两次输入的密码不一致")
-            return
-        if not self.config.auth_allow_register:
-            self._show_error("暂未开放注册")
-            return
-
-        users = self.config.all_users()
-        if any(u.get("username") == username for u in users):
-            self._show_error("该用户名已存在")
-            return
-        if len(users) >= self.config.auth_max_users:
-            self._show_error(f"用户数量已达上限（{self.config.auth_max_users} 个）")
-            return
-
-        self.config.add_registered_user(username, hash_password(password))
-        self._registered_username = username
-        self.accept()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
