@@ -395,9 +395,8 @@ if __name__ == "__main__":
         QMessageBox.information(None, "数据同步", msg)
         sys.exit(0)
 
-    # ---- 快速启动：先创建并显示主窗口（空白动画背景），登录窗口叠在上面 ----
+    # ---- 后台预创建主窗口（先不显示），启动后只有登录窗口 ----
     window = CommemorateWindow(config)
-    window.show()
 
     # ---- 登录阶段（工具窗口） ----
     from login_window import LoginWindow
@@ -423,5 +422,6 @@ if __name__ == "__main__":
             sys.exit(0)  # 已安排更新，退出
 
     # ---- 主窗口正式显示 ----
+    window.show()
     window.raise_()
     sys.exit(app.exec_())
