@@ -344,6 +344,11 @@ class CommemorateWindow(QWidget):
     def _shutdown(self):
         self.timer.stop()
         self.close()
+        # 主窗口带 Qt.Tool 标志，Qt 不会因“最后一个窗口关闭”自动退出，
+        # 这里显式退出事件循环
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
 
 
 # ============================================================
