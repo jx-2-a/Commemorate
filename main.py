@@ -379,6 +379,17 @@ if __name__ == "__main__":
     config = ConfigManager("config.json")
     args = sys.argv[1:]
 
+    # ---- 设置本地令牌（--set-token <token>），不依赖环境变量 ----
+    if "--set-token" in args:
+        idx = args.index("--set-token")
+        token = args[idx + 1] if idx + 1 < len(args) else ""
+        if token:
+            config.set_local_token(token)
+            print("本地令牌已保存到 local_state.json")
+        else:
+            print("用法: python main.py --set-token <token>")
+        sys.exit(0)
+
     # ---- 推送本地数据到私有仓库（--sync-push，可跟文件名） ----
     if "--sync-push" in args:
         from PyQt5.QtWidgets import QMessageBox
@@ -414,7 +425,8 @@ if __name__ == "__main__":
         sync_running["value"] = False
         sync_result.update(result)
         if not result.get("success"):
-            login.update_sync_state("failed")
+            detail = result.get("sync_errors", [""])[0] if result.get("sync_errors") else None
+            login.update_sync_state("failed", detail)
             return
         config.reload()
         if pending_user and config.auth_mode == "local":

@@ -214,8 +214,16 @@ class ConfigManager:
         return self._data.get("sync", {}).get("push_token_env", "GITHUB_TOKEN")
 
     def sync_token(self):
-        """读取 GitHub 令牌（用于私有仓库读取和推送）"""
-        return os.environ.get(self.sync_push_token_env or "GITHUB_TOKEN", "")
+        """读取 GitHub 令牌：优先环境变量，其次本地配置（local_state.json）"""
+        token = os.environ.get(self.sync_push_token_env or "GITHUB_TOKEN", "")
+        if token:
+            return token
+        return self._local_state.get("github_token", "")
+
+    def set_local_token(self, token):
+        """把令牌保存到本地配置（gitignored），不依赖环境变量"""
+        self._local_state["github_token"] = token
+        self.save_local_state()
 
     @property
     def auth_mode(self):

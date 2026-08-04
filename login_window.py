@@ -559,7 +559,7 @@ class LoginWindow(QDialog):
         """最近一次登录成功的密码（用于更新重启后自动登录）"""
         return getattr(self, "_login_password", "")
 
-    def update_sync_state(self, state):
+    def update_sync_state(self, state, detail=None):
         """登录前同步状态：syncing / ready / failed"""
         self._error_timer.stop()
         if state == "ready":
@@ -579,6 +579,11 @@ class LoginWindow(QDialog):
             self.refresh_btn.setVisible(False)
         else:  # failed
             self._sync_status = "用户信息同步失败，请检查网络后点击刷新重试"
+            if detail:
+                d = str(detail).strip()
+                if len(d) > 40:
+                    d = d[:40] + "…"
+                self._sync_status += f"（{d}）"
             color = ERROR_COLOR
             self.refresh_btn.setVisible(True)
         self.error_label.setText(self._sync_status)

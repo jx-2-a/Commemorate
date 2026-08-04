@@ -86,6 +86,14 @@ python main.py --skip-sync
 set GITHUB_TOKEN=ghp_xxx
 ```
 
+令牌读取优先级：环境变量 `GITHUB_TOKEN` 优先，其次本地 `local_state.json`（不依赖环境变量，重启/双击启动都可用）。本地保存用：
+
+```bat
+python main.py --set-token ghp_xxx
+```
+
+如果同步失败，登录窗口会显示具体原因（如 `Not Found` 通常是令牌缺失/失效/未授权该仓库，`Operation canceled` 通常是网络超时）。
+
 ## 安全提示
 
 - token 只放在环境变量或 GitHub Secrets 中，不要提交进仓库。

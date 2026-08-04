@@ -131,7 +131,7 @@ class DataSyncManager(QObject):
         return req
 
     def _token(self):
-        return os.environ.get(self.config.sync_push_token_env or "GITHUB_TOKEN", "")
+        return self.config.sync_token()
 
     # ---------- 队列调度 ----------
 
