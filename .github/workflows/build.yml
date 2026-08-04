@@ -29,8 +29,9 @@ jobs:
       - name: Package app.zip and publish GitHub Release
         shell: pwsh
         env:
-          GH_TOKEN: ${{ github.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          Write-Output "token_len=$($env:GH_TOKEN.Length)"
           New-Item -ItemType Directory -Force -Path Release | Out-Null
           Compress-Archive -Path dist\Commemorate.exe -DestinationPath Release\app.zip -Force
           $headers = @{ Authorization = "token $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
