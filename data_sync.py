@@ -117,6 +117,7 @@ class DataSyncManager(QObject):
 
     def _request(self, url: str, token: str = "", accept_raw: bool = True) -> QNetworkRequest:
         req = QNetworkRequest(QUrl(url))
+        req.setTransferTimeout(10000)
         if "api.github.com" in url:
             if accept_raw:
                 # 拉取：直接拿原始文件内容

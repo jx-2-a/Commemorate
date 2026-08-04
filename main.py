@@ -407,6 +407,7 @@ if __name__ == "__main__":
     login = LoginWindow(config)
     login.update_sync_state("syncing")
     sync_running = {"value": False}
+    sync_background = {"thread": None, "worker": None}
 
     def finalize_sync(result):
         """同步线程结束：成功则重载配置并解锁登录，失败则阻止登录"""
@@ -442,7 +443,17 @@ if __name__ == "__main__":
         w.finished.connect(finalize_sync)
         w.finished.connect(t.quit)
         t.finished.connect(w.deleteLater)
+        sync_background["thread"] = t
+        sync_background["worker"] = w
         t.start()
+
+    def stop_sync_thread():
+        """退出前优雅停止后台同步线程，避免 QThread 销毁时线程仍在运行"""
+        t = sync_background.get("thread")
+        if t is not None:
+            t.quit()
+            t.wait(10000)
+        sync_background.update(thread=None, worker=None)
 
     # 刷新按钮：同步失败后可一键重试
     login.retry_sync.connect(start_sync_thread)
@@ -456,6 +467,7 @@ if __name__ == "__main__":
 
     # ---- 登录（必须等待同步成功；同步期间按钮禁用） ----
     if login.exec_() != LoginWindow.Accepted:
+        stop_sync_thread()
         window._shutdown()
         sys.exit(0)
     login_username = login.username()
@@ -476,6 +488,7 @@ if __name__ == "__main__":
             if action[0] == "install":
                 # 保留登录信息：重启后自动登录，直接进入主窗口
                 config.set_pending_auto_login(login_username, login_password)
+                stop_sync_thread()
                 window._shutdown()
                 sys.exit(0)
         else:
