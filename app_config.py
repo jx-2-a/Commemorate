@@ -48,16 +48,27 @@ class ConfigManager:
 
     @property
     def data_dir(self):
-        """同步数据目录（默认 <程序目录>/data，不存在则创建）"""
-        sub = self._data.get("sync", {}).get("local_dir", "data")
-        d = self.base_dir / sub
+        """远程同步数据目录（remote/，与本地数据分开放）"""
+        d = self.base_dir / "remote"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @property
+    def remote_dir(self):
+        """远程同步数据目录的正式名称"""
+        return self.data_dir
+
+    @property
+    def local_dir(self):
+        """本地个人数据目录（local_state.json、日志、更新脚本）"""
+        d = self.base_dir / "local"
         d.mkdir(parents=True, exist_ok=True)
         return d
 
     @property
     def local_state_path(self):
         """本地个人配置（记住登录、注册用户），不参与远程同步"""
-        return self.base_dir / "local_state.json"
+        return self.local_dir / "local_state.json"
 
     # ---------- 读写 ----------
 

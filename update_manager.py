@@ -201,8 +201,8 @@ class UpdateManager(QObject):
         source = Path(new_exe_path)
         tmp_dir = source.parent
 
-        # 运行时文件统一放在 exe 旁的 appdata 文件夹内
-        bat_dir = Path(target_exe).parent / "appdata"
+        # 更新脚本放在本地数据目录 appdata/local/
+        bat_dir = Path(target_exe).parent / "appdata" / "local"
         bat_path = bat_dir / "updater.bat"
 
         bat_content = f'''@echo off

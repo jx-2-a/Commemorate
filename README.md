@@ -52,12 +52,11 @@ GitHub 私有仓库 my-app-data（配置与数据）
 Commemorate.exe
 └── appdata/
     ├── config.json          ← 引导配置（首次运行从内置副本自动生成）
-    ├── local_state.json     ← 仅存 GitHub 令牌与“记住我”勾选状态
-    ├── commemorate.log      ← 崩溃日志
-    └── data/                ← 私有仓库同步的数据文件（version.json / config.json / data.csv / rules.txt）
+    ├── remote/              ← 远程同步数据（version.json / config.json / data.csv / rules.txt）
+    └── local/               ← 本地数据（local_state.json 令牌与记住状态 / commemorate.log / updater.bat）
 ```
 
-数据读取位置：同步数据放在 `appdata/data/`（打包后）或 `data/`（开发模式），本地个人数据放在 `appdata/local_state.json`，引导配置为 `appdata/config.json`。
+数据读取位置：远程同步数据放在 `appdata/remote/`（打包后）或项目根 `remote/`（开发模式），本地个人数据放在 `appdata/local/`（打包后）或项目根 `local/`（开发模式），引导配置为 `appdata/config.json`。
 
 ## 发布新版本
 

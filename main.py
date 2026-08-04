@@ -30,8 +30,11 @@ from app_config import ConfigManager
 def _log_dir() -> Path:
     """可执行文件 / 脚本所在目录（日志放在这里）"""
     if getattr(sys, 'frozen', False):
-        return Path(sys.executable).parent / "appdata"
-    return Path(__file__).resolve().parent
+        d = Path(sys.executable).parent / "appdata" / "local"
+    else:
+        d = Path(__file__).resolve().parent / "local"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def _write_crash_log(etype, value, tb):
