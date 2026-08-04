@@ -185,11 +185,11 @@ class LoginWindow(QDialog):
         self.register_btn.clicked.connect(self._show_register_page)
 
         # 返回按钮（注册页左上角 ←，点击回到登录页）
-        self.back_btn = QPushButton("←", self)
+        self.back_btn = QPushButton("❮", self)
         self.back_btn.setGeometry(12, 11, 34, 34)
         self.back_btn.setCursor(Qt.PointingHandCursor)
         self.back_btn.setFocusPolicy(Qt.NoFocus)
-        self.back_btn.setToolTip("返回登录")
+        # self.back_btn.setToolTip("返回登录")
         self.back_btn.clicked.connect(self._show_login_page)
         self.back_btn.setVisible(False)
 
@@ -385,7 +385,7 @@ class LoginWindow(QDialog):
             QPushButton {{
                 color: rgba(200, 180, 210, 140);
                 font-family: "Microsoft YaHei";
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
                 border: none;
                 border-radius: 17px;
@@ -456,19 +456,23 @@ class LoginWindow(QDialog):
             return
         if self._error_alpha > 0.01:
             self._error_alpha *= 0.90
-            c = self._message_color
-            self.error_label.setStyleSheet(f"""
-                QLabel {{
-                    color: rgba({c.red()}, {c.green()}, {c.blue()}, {int(255 * self._error_alpha)});
-                    font-family: "Microsoft YaHei";
-                    font-size: 12px;
-                    background: transparent;
-                }}
-            """)
+            self._style_message(self._error_alpha)
         else:
             self._error_alpha = 0.0
             self.error_label.setVisible(False)
             self._error_timer.stop()
+
+    def _style_message(self, alpha):
+        """按透明度重绘提示文字样式"""
+        c = self._message_color
+        self.error_label.setStyleSheet(f"""
+            QLabel {{
+                color: rgba({c.red()}, {c.green()}, {c.blue()}, {int(255 * alpha)});
+                font-family: "Microsoft YaHei";
+                font-size: 12px;
+                background: transparent;
+            }}
+        """)
 
     def _show_error(self, message):
         """显示错误消息并抖动输入框"""
@@ -477,6 +481,7 @@ class LoginWindow(QDialog):
         self.error_label.setVisible(True)
         self._error_alpha = 1.0
         self._hold_ticks = 20  # 保持约 1 秒再开始淡出
+        self._style_message(1.0)  # 立即刷新为全亮
         self._error_timer.stop()
         self._error_timer.start(50)
         self.username_input.shake()
@@ -489,6 +494,7 @@ class LoginWindow(QDialog):
         self.error_label.setVisible(True)
         self._error_alpha = 1.0
         self._hold_ticks = 20
+        self._style_message(1.0)
         self._error_timer.stop()
         self._error_timer.start(50)
 
@@ -539,6 +545,7 @@ class LoginWindow(QDialog):
         self.back_btn.setVisible(True)
         self.error_label.setVisible(False)
         self._error_timer.stop()
+        self.username_input.clear()
         self.password_input.clear()
         self.confirm_input.clear()
         self.username_input.setFocus()
