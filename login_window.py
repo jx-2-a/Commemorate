@@ -6,7 +6,7 @@ import sys
 import math
 import json
 
-from PyQt5.QtCore import Qt, QTimer, QPointF, QRectF, QPropertyAnimation, QEasingCurve, pyqtProperty, pyqtSignal, QUrl
+from PyQt5.QtCore import Qt, QTimer, QPointF, QPropertyAnimation, QEasingCurve, pyqtProperty, pyqtSignal, QUrl
 from PyQt5.QtGui import (
     QPainter, QColor, QFont, QRadialGradient, QLinearGradient,
     QPen, QBrush, QPainterPath, QFontMetrics, QIcon, QPixmap
@@ -63,71 +63,6 @@ class ShakeableLineEdit(QLineEdit):
         for t, v in keys:
             self._anim.setKeyValueAt(t, v)
         self._anim.start()
-
-
-class CircleIconButton(QPushButton):
-    """圆形图标按钮：用 QPainter 绘制 ✕ / ↻，不受字体渲染影响，不会裁切"""
-
-    def __init__(self, kind="close", parent=None):
-        super().__init__(parent)
-        self._kind = kind  # "close" 或 "refresh"
-        self._hovered = False
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.NoFocus)
-        self.setFixedSize(34, 34)
-        # 去掉 QPushButton 默认背景，只保留 QPainter 绘制的内容
-        self.setStyleSheet("QPushButton { background: transparent; border: none; }")
-
-    def enterEvent(self, event):
-        self._hovered = True
-        self.update()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self._hovered = False
-        self.update()
-        super().leaveEvent(event)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHints(QPainter.Antialiasing)
-        w, h = self.width(), self.height()
-        cx, cy = w / 2, h / 2
-
-        if self._hovered:
-            bg = QColor(230, 60, 80, 220) if self._kind == "close" else QColor(255, 140, 180, 210)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(bg))
-            painter.drawEllipse(QPointF(cx, cy), w / 2 - 0.5, h / 2 - 0.5)
-
-        color = QColor(255, 255, 255) if self._hovered else QColor(200, 180, 210, 150)
-        pen = QPen(color, 2.0)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        painter.setPen(pen)
-        painter.setBrush(Qt.NoBrush)
-
-        if self._kind == "close":
-            m = 9.5
-            painter.drawLine(QPointF(m, m), QPointF(w - m, h - m))
-            painter.drawLine(QPointF(w - m, m), QPointF(m, h - m))
-        else:
-            self._paint_refresh(painter, w, h)
-        painter.end()
-
-    def _paint_refresh(self, painter, w, h):
-        cx, cy = w / 2, h / 2
-        r = w / 2 - 6
-        rect = QRectF(cx - r, cy - r, r * 2, r * 2)
-        # 顺时针弧（负跨度），留出顶部缺口放箭头
-        painter.drawArc(rect, 390 * 16, -300 * 16)
-        # 箭头在弧末端（顶部），指向顺时针方向（右侧）
-        ex, ey = cx, cy - r
-        L = 5.5
-        for ang in (-0.6, 0.6):
-            tip_x = ex + L * math.cos(ang)
-            tip_y = ey + L * math.sin(ang)
-            painter.drawLine(QPointF(ex, ey), QPointF(tip_x, tip_y))
 
 
 class LoginWindow(QDialog):
@@ -239,13 +174,17 @@ class LoginWindow(QDialog):
         self.register_btn.clicked.connect(self._open_register)
 
         # 关闭按钮（右上角圆形 ×，悬停变红）
-        self.close_btn = CircleIconButton("close", self)
+        self.close_btn = QPushButton("✕", self)
         self.close_btn.setGeometry(378, 11, 34, 34)
+        self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setFocusPolicy(Qt.NoFocus)
         self.close_btn.clicked.connect(self.reject)
 
         # 刷新按钮（同步失败时出现，点击重试后台同步）
-        self.refresh_btn = CircleIconButton("refresh", self)
+        self.refresh_btn = QPushButton("↻", self)
         self.refresh_btn.setGeometry(338, 11, 34, 34)
+        self.refresh_btn.setCursor(Qt.PointingHandCursor)
+        self.refresh_btn.setFocusPolicy(Qt.NoFocus)
         self.refresh_btn.setToolTip("重新同步")
         self.refresh_btn.clicked.connect(lambda: self.retry_sync.emit())
         self.refresh_btn.setVisible(False)
@@ -378,6 +317,46 @@ class LoginWindow(QDialog):
                 color: {ACCENT_PINK.name()};
                 border-color: {ACCENT_PINK.name()};
                 background: rgba(60, 30, 80, 160);
+            }}
+        """)
+
+        self.close_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: rgba(200, 180, 210, 140);
+                font-family: "Microsoft YaHei";
+                font-size: 14px;
+                font-weight: bold;
+                border: none;
+                border-radius: 17px;
+                padding: 0;
+                background: transparent;
+            }}
+            QPushButton:hover {{
+                color: white;
+                background: rgba(230, 60, 80, 220);
+            }}
+            QPushButton:pressed {{
+                background: rgba(190, 40, 60, 255);
+            }}
+        """)
+
+        self.refresh_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: rgba(200, 180, 210, 140);
+                font-family: "Microsoft YaHei";
+                font-size: 16px;
+                font-weight: bold;
+                border: none;
+                border-radius: 17px;
+                padding: 0;
+                background: transparent;
+            }}
+            QPushButton:hover {{
+                color: white;
+                background: rgba(255, 140, 180, 210);
+            }}
+            QPushButton:pressed {{
+                background: rgba(220, 90, 140, 255);
             }}
         """)
 
@@ -716,8 +695,10 @@ class RegisterDialog(QDialog):
         self.error_label.setGeometry(70, 385, 280, 30)
         self.error_label.setVisible(False)
 
-        self.close_btn = CircleIconButton("close", self)
+        self.close_btn = QPushButton("✕", self)
         self.close_btn.setGeometry(378, 11, 34, 34)
+        self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setFocusPolicy(Qt.NoFocus)
         self.close_btn.clicked.connect(self.reject)
 
     def _apply_styles(self):
@@ -782,6 +763,26 @@ class RegisterDialog(QDialog):
                 font-family: "Microsoft YaHei";
                 font-size: 12px;
                 background: transparent;
+            }}
+        """)
+
+        self.close_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: rgba(200, 180, 210, 140);
+                font-family: "Microsoft YaHei";
+                font-size: 14px;
+                font-weight: bold;
+                border: none;
+                border-radius: 17px;
+                padding: 0;
+                background: transparent;
+            }}
+            QPushButton:hover {{
+                color: white;
+                background: rgba(230, 60, 80, 220);
+            }}
+            QPushButton:pressed {{
+                background: rgba(190, 40, 60, 255);
             }}
         """)
 
