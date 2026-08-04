@@ -373,34 +373,63 @@ class SyncWorker(QObject):
 
     @pyqtSlot()
     def run(self):
-        from app_config import ConfigManager
-        from update_manager import UpdateManager, preflight_update
+        import traceback
 
-        # 在子线程内创建实例，确保网络对象绑定到本线程的事件循环
-        cfg = ConfigManager(self._config_filename)
-        mgr = DataSyncManager(cfg)
-        loop = QEventLoop()
-        mgr.sync_done.connect(loop.quit)
-        mgr.pull()
-        loop.exec_()
+        # 后台线程内的任何异常都不能让登录界面永远卡在“正在同步”，
+        # 统一捕获并作为同步失败上报，由界面提示用户点击刷新重试。
+        try:
+            from app_config import ConfigManager
+            from update_manager import UpdateManager, preflight_update
 
-        result = {
-            "success": not mgr.errors,
-            "sync_errors": mgr.errors,
-            "sync_done": mgr._done,
-            "preflight": None,
-            "preflight_error": None,
-        }
-        if result["success"]:
-            cfg.reload()
-            if cfg.update_auto_check and cfg.update_check_url:
-                um = UpdateManager(cfg)
-                pre = preflight_update(um, cfg)
-                if "error" in pre:
-                    result["preflight_error"] = pre["error"]
-                else:
-                    pre["latest_data"] = dict(um._latest_data)
-                    result["preflight"] = pre
+            # 在子线程内创建实例，确保网络对象绑定到本线程的事件循环
+            cfg = ConfigManager(self._config_filename)
+            mgr = DataSyncManager(cfg)
+            loop = QEventLoop()
+
+            # 总超时兜底：即使某个请求异常（如网络假死）也不允许无限等待
+            timeout_hit = {"v": False}
+            watchdog = QTimer()
+            watchdog.setSingleShot(True)
+
+            def on_watchdog():
+                timeout_hit["v"] = True
+                loop.quit()
+
+            watchdog.timeout.connect(on_watchdog)
+            watchdog.start(60000)
+            mgr.sync_done.connect(loop.quit)
+            mgr.pull()
+            loop.exec_()
+            watchdog.stop()
+
+            if timeout_hit["v"]:
+                mgr._errors.append("同步超时（60 秒未完成），请检查网络后重试")
+
+            result = {
+                "success": not mgr.errors,
+                "sync_errors": mgr.errors,
+                "sync_done": mgr._done,
+                "preflight": None,
+                "preflight_error": None,
+            }
+            if result["success"]:
+                cfg.reload()
+                if cfg.update_auto_check and cfg.update_check_url:
+                    um = UpdateManager(cfg)
+                    pre = preflight_update(um, cfg)
+                    if "error" in pre:
+                        result["preflight_error"] = pre["error"]
+                    else:
+                        pre["latest_data"] = dict(um._latest_data)
+                        result["preflight"] = pre
+        except Exception:
+            result = {
+                "success": False,
+                "sync_errors": ["后台同步异常，请点击右上角刷新重试"],
+                "sync_done": 0,
+                "preflight": None,
+                "preflight_error": traceback.format_exc(),
+            }
         self.finished.emit(result)
 
 

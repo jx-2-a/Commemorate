@@ -8,7 +8,6 @@ import os
 import sys
 import json
 import shutil
-import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
@@ -53,6 +52,98 @@ def _find_exe(root: Path):
             return p
     exes = list(root.rglob("*.exe"))
     return exes[0] if exes else None
+
+
+def _build_updater_bat(target_exe: Path, source_exe: Path, bat_dir: Path) -> str:
+    """生成独立的更新脚本 updater.bat
+
+    更新脚本独立于主程序运行，负责：
+    1. 等待旧主程序完全退出（最多 40 秒，超时则强制结束）
+    2. 用新 exe 替换旧 exe（失败时旧 exe 保持不动）
+    3. 清除 _MEIPASS2 环境变量后启动新版本（避免 PyInstaller 复用旧进程
+       已清理的临时解压目录）
+    4. 清理临时解压目录与自身，并记录 updater.log 便于排查
+    """
+    tmp_dir = source_exe.parent
+    log_path = bat_dir / "updater.log"
+
+    def ps_quote(p: str) -> str:
+        return p.replace("'", "''")
+
+    # 用 PowerShell + ProcessStartInfo 启动新 exe，确保环境变量中不残留
+    # _MEIPASS2（cmd 的 set VAR= 只是置空，PyInstaller 可能仍视为已设置）
+    ps_starter = (
+        "$p=New-Object System.Diagnostics.ProcessStartInfo;"
+        f"$p.FileName='{ps_quote(str(target_exe))}';"
+        f"$p.WorkingDirectory='{ps_quote(str(target_exe.parent))}';"
+        "$p.UseShellExecute=$false;"
+        "$p.EnvironmentVariables.Remove('_MEIPASS2');"
+        "[void][System.Diagnostics.Process]::Start($p)"
+    )
+
+    ps_exe = r"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+
+    return f"""@echo off
+setlocal EnableDelayedExpansion
+chcp 65001 >nul
+title Commemorate 更新程序
+
+set "TARGET={target_exe}"
+set "SOURCE={source_exe}"
+set "TMPDIR={tmp_dir}"
+set "BATFILE=%~f0"
+set "LOGFILE={log_path}"
+
+echo [%date% %time%] updater started >> "%LOGFILE%" 2>NUL
+echo [%date% %time%] target=%TARGET% >> "%LOGFILE%" 2>NUL
+echo [%date% %time%] source=%SOURCE% >> "%LOGFILE%" 2>NUL
+
+echo  等待主程序退出（最多 40 秒）...
+set /a COUNT=0
+:WAIT_LOOP
+tasklist /FI "IMAGENAME eq Commemorate.exe" 2>NUL | find /I "Commemorate.exe" >NUL
+if errorlevel 1 goto REPLACE
+timeout /t 1 /nobreak >NUL
+set /a COUNT+=1
+if !COUNT! geq 40 goto FORCE
+goto WAIT_LOOP
+
+:FORCE
+echo  主程序未退出，正在强制关闭...
+taskkill /F /IM Commemorate.exe >NUL 2>&1
+timeout /t 2 /nobreak >NUL
+
+:REPLACE
+if not exist "%SOURCE%" (
+    echo [%date% %time%] ERROR: source missing: %SOURCE% >> "%LOGFILE%" 2>NUL
+    echo  新版本程序文件缺失，更新失败。
+    pause
+    exit /b 1
+)
+echo  正在替换程序文件...
+copy /Y "%SOURCE%" "%TARGET%" >NUL 2>&1
+if errorlevel 1 (
+    echo [%date% %time%] ERROR: copy failed >> "%LOGFILE%" 2>NUL
+    echo  文件替换失败（可能被杀毒软件占用），请关闭安全软件后重试。
+    pause
+    exit /b 1
+)
+if exist "%TARGET%.old" del /f /q "%TARGET%.old" >NUL 2>&1
+echo [%date% %time%] replace ok, launching new version >> "%LOGFILE%" 2>NUL
+
+{ps_exe} -NoProfile -ExecutionPolicy Bypass -Command "{ps_starter}"
+if errorlevel 1 (
+    echo [%date% %time%] ERROR: start new version failed >> "%LOGFILE%" 2>NUL
+    pause
+    exit /b 1
+)
+echo [%date% %time%] new version launched >> "%LOGFILE%" 2>NUL
+
+timeout /t 3 /nobreak >NUL
+if exist "%TMPDIR%" rmdir /s /q "%TMPDIR%" >NUL 2>&1
+endlocal
+(goto) 2>nul & del "%~f0"
+"""
 
 
 # ── UpdateManager ──────────────────────────────────────────
@@ -137,6 +228,7 @@ class UpdateManager(QObject):
             QNetworkRequest.RedirectPolicyAttribute,
             QNetworkRequest.NoLessSafeRedirectPolicy,
         )
+        request.setTransferTimeout(120000)
         self._download_reply = self._manager.get(request)
         self._download_reply.downloadProgress.connect(self._on_progress)
         self._download_reply.finished.connect(self._on_download_finished)
@@ -211,38 +303,36 @@ class UpdateManager(QObject):
             self._download_reply.abort()
 
     def schedule_update(self, new_exe_path: str):
-        """替换 exe 并直接启动新版本（不依赖 bat，避免 DLL 加载问题）"""
+        """安排独立更新脚本替换 exe 并重启
+
+        旧程序不直接替换 / 启动新 exe，而是生成独立的 updater.bat 后立即退出；
+        updater.bat 等待旧进程完全退出 → 替换 exe → 清除 _MEIPASS2 → 启动新版本。
+        避免新进程在旧进程尚未退出时启动导致的 PyInstaller 临时目录竞态。
+        """
         if not getattr(sys, 'frozen', False):
             self.error_occurred.emit("开发模式不支持自动更新，请手动拉取代码")
             return
 
         target_exe = sys.executable
         source = Path(new_exe_path)
-        target = Path(target_exe)
+        if not source.is_file():
+            self.error_occurred.emit("更新安装失败：未找到新版本程序文件")
+            return
 
         try:
-            # 1. 把正在运行的旧 exe 改名为 .old（Windows 允许重命名运行中的 exe）
-            backup = target.with_name(target.name + ".old")
-            if backup.exists():
-                backup.unlink()
-            target.rename(backup)
-
-            # 2. 把新 exe 复制到原位置
-            shutil.copy2(source, target)
-
-            # 3. 启动新 exe 前清除 _MEIPASS2：PyInstaller onefile 会让子进程
-            #    复用旧进程已解压的临时目录（_MEIPASS2 环境变量），而旧进程
-            #    退出时会清理该目录，导致新进程找不到 python311.dll 等文件。
-            #    清除后新进程会重新解压到自己的临时目录（等效于手动双击）。
-            clean_env = dict(os.environ)
-            clean_env.pop("_MEIPASS2", None)
-            subprocess.Popen(
-                [str(target)],
-                cwd=str(target.parent),
-                env=clean_env,
+            bat_path = self.config.local_dir / "updater.bat"
+            bat_path.write_text(
+                _build_updater_bat(Path(target_exe), source, self.config.local_dir),
+                encoding="utf-8",
             )
         except Exception as e:
-            self.error_occurred.emit(f"更新安装失败: {e}")
+            self.error_occurred.emit(f"更新安装失败：无法写入更新脚本 {e}")
+            return
+
+        try:
+            os.startfile(str(bat_path))
+        except OSError as e:
+            self.error_occurred.emit(f"更新安装失败：无法启动更新脚本 {e}")
 
 
 # ── 更新提示对话框 ─────────────────────────────────────────
