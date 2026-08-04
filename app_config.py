@@ -98,6 +98,7 @@ class ConfigManager:
             try:
                 with open(overlay, "r", encoding="utf-8") as f:
                     remote = json.load(f)
+                remote.pop("app", None)          # 版本/名称以本地引导配置为准
                 remote.pop("update", None)
                 remote.pop("sync", None)
                 remote.pop("remembered", None)
@@ -149,8 +150,14 @@ class ConfigManager:
         return result
 
     def save(self):
+        """只持久化引导相关配置（app/update/sync），账号与纪念信息以远程为准"""
+        slim = {
+            "app": self._data.get("app", {}),
+            "update": self._data.get("update", {}),
+            "sync": self._data.get("sync", {}),
+        }
         with open(self._config_path, "w", encoding="utf-8") as f:
-            json.dump(self._data, f, ensure_ascii=False, indent=4)
+            json.dump(slim, f, ensure_ascii=False, indent=4)
 
     @staticmethod
     def _defaults():
@@ -162,7 +169,6 @@ class ConfigManager:
                 "repo_name": "my-app-data",
                 "branch": "main",
                 "use_api": True,
-                "local_dir": "data",
                 "files": ["version.json", "config.json", "data.csv", "rules.txt"],
                 "push_files": ["data.csv", "rules.txt"],
                 "auto_pull": True,

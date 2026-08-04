@@ -25,6 +25,8 @@ GitHub 私有仓库 my-app-data（配置与数据）
 
 ## 首次配置
 
+根目录的 [config.json](config.json) 是**引导配置**，只保留网络引导信息：私有仓库位置、同步文件列表、应用名称/版本。账号与纪念信息一律来自远程，不写在这里。
+
 1. 创建公开仓库（代码 + Release 文件夹）和私有仓库 `my-app-data`。
 2. 编辑 [config.json](config.json)：
 
