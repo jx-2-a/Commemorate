@@ -7,17 +7,17 @@
 ```
 GitHub 公开仓库（代码 + 发布包）
 ├── Code
+├── version.json            ← 版本号 + 下载地址 + SHA-256（发布时 CI 自动更新）
 └── GitHub Releases
        └── v1.1.0 / app.zip  ← 推 v* 标签自动构建发布
 
 GitHub 私有仓库 my-app-data（配置与数据）
-├── version.json            ← 版本号 + 下载地址 + SHA-256
 ├── config.json             ← 远程配置（登录、纪念信息，会叠加到本地）
 ├── data.csv                ← 业务数据（可推送）
 └── rules.txt               ← 规则数据（可推送）
 ```
 
-更新链路：应用启动 → 读取私有仓库 `version.json` → 有新版则从公开仓库的 GitHub Releases 下载 `app.zip`（地址按版本号寻址，如 `releases/download/v1.1.0/app.zip`）→ 校验 SHA-256 → 解压 → `updater.bat` 替换 exe 并重启。
+更新链路：应用启动 → 读取公开仓库 `version.json`（无需 token）→ 有新版则从 GitHub Releases 下载 `app.zip`（地址按版本号寻址，如 `releases/download/v1.1.0/app.zip`）→ 校验 SHA-256 → 解压 → 独立的 `updater.bat` 等待旧程序退出后替换 exe 并重启。
 
 启动流程：立即显示登录窗口，同时在后台线程同步用户信息与其他数据（拉取到本地 `data/`，`config.json` 作为远程配置叠加生效）并静默完成版本检查，不阻塞界面；登录必须等待同步成功（同步期间按钮禁用，失败则阻止登录，右上角出现刷新按钮可一键重试同步）→ 登录成功 → 如需更新则切换为更新界面，更新完成后自动重启并自动登录进入主窗口；`data.csv` / `rules.txt` 可通过 `--sync-push` 推回仓库。
 
@@ -40,7 +40,7 @@ GitHub 私有仓库 my-app-data（配置与数据）
    | `sync.push_files` | 允许推回仓库的文件（避免远程配置被覆盖） |
    | `sync.push_token_env` | 读取 GitHub token 的环境变量名，默认 `GITHUB_TOKEN` |
 
-3. 把 [examples/version.json](examples/version.json) 复制到私有仓库根目录。`download_url` 支持 `{version}` 占位符，会自动替换成 `version` 字段的版本号；发布后填上 `app.zip` 的 SHA-256。
+3. 把 [examples/version.json](examples/version.json) 提交到公开仓库根目录（作为版本检查入口）。`download_url` 支持 `{version}` 占位符，会自动替换成 `version` 字段的版本号；发布后填上 `app.zip` 的 SHA-256，或直接交给 CI 自动更新。
 4. 私有仓库放好 `config.json`、`data.csv`、`rules.txt`。远程 `config.json` 使用与本地相同的格式，`update` / `sync` 段会被忽略（防止循环依赖）。
 5. 远程 `config.json` 的 `auth` 段可配置注册策略：`allow_register`（是否开放注册）、`max_users`（用户数量上限）、`local_users`（管理账户与密码）。**账号信息一律来自远程**：登录校验、注册（写入 `auth.local_users`）都以远程配置为准，注册需要网络，远程写入成功才算注册成功；本地不保存任何账号。
 
@@ -54,7 +54,7 @@ GitHub 私有仓库 my-app-data（配置与数据）
 Commemorate.exe
 └── appdata/
     ├── config.json          ← 引导配置（首次运行从内置副本自动生成）
-    ├── remote/              ← 远程同步数据（version.json / config.json / data.csv / rules.txt）
+    ├── remote/              ← 远程同步数据（config.json / data.csv / rules.txt）
     └── local/               ← 本地数据（local_state.json 令牌与记住状态 / commemorate.log / updater.bat）
 ```
 
@@ -68,19 +68,16 @@ Commemorate.exe
 pyinstaller --noconfirm Commemorate.spec
 ```
 
-把 `dist\Commemorate.exe` 压缩为 `Release\app.zip` 提交到公开仓库，然后更新私有仓库的 `version.json`（版本号、下载地址、SHA-256）。
+把 `dist\Commemorate.exe` 压缩为 `Release\app.zip` 上传到 GitHub Releases，然后更新公开仓库根目录的 `version.json`（版本号、下载地址、SHA-256）。
 
-或用 GitHub 网页创建 Release：Tags 填 `v1.1.0`，把 `app.zip` 作为附件上传，再更新私有仓库 `version.json` 的版本号与 SHA-256。
+或用 GitHub 网页创建 Release：Tags 填 `v1.1.0`，把 `app.zip` 作为附件上传，再更新公开仓库 `version.json` 的版本号与 SHA-256。
 
 ### 方式二：GitHub Actions（推荐）
 
 仓库已内置 [.github/workflows/build.yml](.github/workflows/build.yml)：
 
 1. 推送标签 `v1.1.0` 到公开仓库，自动构建并把 `app.zip` 发布到 GitHub Releases（版本号命名，无分支名）。
-2. 如需自动更新私有仓库 `version.json`，在仓库 Settings → Secrets 中添加：
-   - `DATA_TOKEN`：对私有仓库有 contents 写权限的 token
-   - `DATA_REPO_OWNER`：你的用户名
-   - `DATA_REPO_NAME`：私有仓库名（默认 `my-app-data`）
+2. CI 会自动用内置 token 更新公开仓库根目录的 `version.json`（版本号、下载地址、SHA-256），无需配置任何 Secrets。
 
 ## 数据同步用法
 

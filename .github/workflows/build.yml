@@ -49,13 +49,10 @@ jobs:
           $hash = (Get-FileHash -Algorithm SHA256 "Release\app.zip").Hash.ToLower()
           Write-Output "release_url=$($release.html_url) sha256=$hash"
 
-      - name: Update version.json in data repo
+      - name: Update version.json in repo
         shell: pwsh
         env:
-          DATA_TOKEN: ${{ secrets.DATA_TOKEN }}
-          DATA_REPO_OWNER: ${{ secrets.DATA_REPO_OWNER }}
-          DATA_REPO_NAME: ${{ secrets.DATA_REPO_NAME }}
-        if: env.DATA_TOKEN != '' && env.DATA_REPO_OWNER != '' && env.DATA_REPO_NAME != ''
+          GH_TOKEN: ${{ github.token }}
         run: |
           $version = "${{ github.ref_name }}".TrimStart('v')
           $hash = (Get-FileHash -Algorithm SHA256 "Release\app.zip").Hash.ToLower()
@@ -68,10 +65,10 @@ jobs:
           } | ConvertTo-Json
           $content = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
           $headers = @{
-            Authorization = "token $env:DATA_TOKEN"
+            Authorization = "token $env:GH_TOKEN"
             Accept = "application/vnd.github+json"
           }
-          $apiUrl = "https://api.github.com/repos/$env:DATA_REPO_OWNER/$env:DATA_REPO_NAME/contents/version.json"
+          $apiUrl = "https://api.github.com/repos/${{ github.repository }}/contents/version.json"
           try {
             $existing = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get
             $sha = $existing.sha

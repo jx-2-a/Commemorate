@@ -163,13 +163,20 @@ class ConfigManager:
     def _defaults():
         return {
             "app": {"version": "1.0.0", "name": "Commemorate", "build_date": ""},
-            "update": {"check_url": "", "auto_check": True, "skip_version": None},
+            "update": {
+                "check_url": "",
+                "auto_check": True,
+                "skip_version": None,
+                "repo_owner": "jx-2-a",
+                "repo_name": "Commemorate",
+                "branch": "main",
+            },
             "sync": {
                 "repo_owner": "",
                 "repo_name": "my-app-data",
                 "branch": "main",
                 "use_api": True,
-                "files": ["version.json", "config.json", "data.csv", "rules.txt"],
+                "files": ["config.json", "data.csv", "rules.txt"],
                 "push_files": ["data.csv", "rules.txt"],
                 "auto_pull": True,
                 "push_token_env": "GITHUB_TOKEN"
@@ -208,7 +215,13 @@ class ConfigManager:
         url = self._data.get("update", {}).get("check_url", "")
         if url:
             return url
-        # 未显式配置时，从私有仓库的 version.json 推导
+        # 未显式配置时，默认从公开仓库的 version.json 检查更新（无需 token）
+        owner = self._data.get("update", {}).get("repo_owner", "")
+        repo = self._data.get("update", {}).get("repo_name", "")
+        if owner and repo:
+            branch = self._data.get("update", {}).get("branch", "main")
+            return f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/version.json"
+        # 兼容旧配置：从数据仓库推导
         owner, repo = self.sync_repo_owner, self.sync_repo_name
         if owner and repo:
             if self.sync_use_api:
@@ -247,7 +260,7 @@ class ConfigManager:
     @property
     def sync_files(self):
         return self._data.get("sync", {}).get(
-            "files", ["version.json", "config.json", "data.csv", "rules.txt"]
+            "files", ["config.json", "data.csv", "rules.txt"]
         )
 
     @property
