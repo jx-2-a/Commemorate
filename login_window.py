@@ -324,7 +324,7 @@ class LoginWindow(QDialog):
             QPushButton {{
                 color: rgba(200, 180, 210, 140);
                 font-family: "Microsoft YaHei";
-                font-size: 12px;
+                font-size: 16px;
                 font-weight: bold;
                 border: none;
                 border-radius: 17px;
@@ -344,7 +344,7 @@ class LoginWindow(QDialog):
             QPushButton {{
                 color: rgba(200, 180, 210, 140);
                 font-family: "Microsoft YaHei";
-                font-size: 14px;
+                font-size: 18px;
                 font-weight: bold;
                 border: none;
                 border-radius: 17px;
@@ -770,7 +770,7 @@ class RegisterDialog(QDialog):
             QPushButton {{
                 color: rgba(200, 180, 210, 140);
                 font-family: "Microsoft YaHei";
-                font-size: 12px;
+                font-size: 16px;
                 font-weight: bold;
                 border: none;
                 border-radius: 17px;
