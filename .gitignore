@@ -3,6 +3,7 @@ dist/
 __pycache__/
 *.pyc
 data/
+appdata/
 commemorate.log
 local_state.json
 .venv/

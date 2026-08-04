@@ -79,6 +79,7 @@ class DataSyncManager(QObject):
     file_synced = pyqtSignal(str, bool)   # 文件名, 内容是否变化
     sync_done = pyqtSignal(int, int)      # 完成数量, 总数
     error_occurred = pyqtSignal(str)      # 单文件错误（不中断整体）
+    remote_config_done = pyqtSignal(bool, str)  # 远程配置更新结果 (ok, message)
 
     def __init__(self, config: ConfigManager, parent=None):
         super().__init__(parent)
@@ -296,6 +297,58 @@ class DataSyncManager(QObject):
             self._next()
 
     # ---------- 结果 ----------
+
+    def push_registered_user(self, username, password_hash):
+        """把新注册用户同步到远程 config.json（拉取 → 追加 → 推回）"""
+        self._pending_reg_user = {
+            "username": username,
+            "password_hash": password_hash,
+            "display_name": username,
+        }
+        self._reg_url = file_url(self.config, "config.json")
+        req = self._request(self._reg_url, token=self._token(), accept_raw=False)
+        reply = self._manager.get(req)
+        reply.finished.connect(lambda r=reply: self._on_remote_config_got(r))
+
+    def _on_remote_config_got(self, reply):
+        try:
+            if reply.error() != QNetworkReply.NoError:
+                self.remote_config_done.emit(False, f"读取远程配置失败: {reply.errorString()}")
+                return
+            info = json.loads(reply.readAll().data().decode("utf-8"))
+            sha = info.get("sha")
+            content = base64.b64decode(info.get("content", ""))
+            data = json.loads(content.decode("utf-8"))
+            users = data.setdefault("auth", {}).setdefault("local_users", [])
+            user = self._pending_reg_user
+            if any(x.get("username") == user["username"] for x in users):
+                self.remote_config_done.emit(False, "该用户名已存在于远程配置")
+                return
+            users.append(user)
+            new_bytes = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+            body = {
+                "message": f"register: {user['username']}",
+                "content": base64.b64encode(new_bytes).decode("ascii"),
+                "sha": sha,
+                "branch": self.config.sync_branch,
+            }
+            req = self._request(self._reg_url, token=self._token(), accept_raw=False)
+            req.setHeader(QNetworkRequest.ContentTypeHeader, "application/json")
+            put_reply = self._manager.put(req, json.dumps(body).encode("utf-8"))
+            put_reply.finished.connect(lambda r=put_reply: self._on_remote_config_put(r))
+        except Exception as e:
+            self.remote_config_done.emit(False, f"同步远程配置失败: {e}")
+        finally:
+            reply.deleteLater()
+
+    def _on_remote_config_put(self, reply):
+        try:
+            if reply.error() != QNetworkReply.NoError:
+                self.remote_config_done.emit(False, f"写入远程配置失败: {reply.errorString()}")
+            else:
+                self.remote_config_done.emit(True, "已同步到远程")
+        finally:
+            reply.deleteLater()
 
     @property
     def errors(self):

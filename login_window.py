@@ -589,7 +589,31 @@ class LoginWindow(QDialog):
         self.username_input.setText(username)
         self.password_input.clear()
         self.password_input.setFocus()
-        self._show_info("注册成功，请登录")
+        self._show_info("注册成功，正在同步远程…")
+        self._start_remote_register_sync(username)
+
+    def _start_remote_register_sync(self, username):
+        """把新注册用户同步到远程 config.json（异步，不阻塞界面）"""
+        from data_sync import DataSyncManager
+        user = next(
+            (u for u in self.config.registered_users if u.get("username") == username),
+            None,
+        )
+        if user is None:
+            return
+        self._reg_sync_mgr = DataSyncManager(self.config, self)
+        self._reg_sync_mgr.remote_config_done.connect(
+            lambda ok, msg, uname=username: self._on_register_synced(ok, msg, uname)
+        )
+        self._reg_sync_mgr.push_registered_user(user["username"], user["password_hash"])
+
+    def _on_register_synced(self, ok, msg, username):
+        """注册用户远程同步结果"""
+        if ok:
+            self.config.remove_registered_user(username)
+            self._show_info("注册成功，账号已同步到远程")
+        else:
+            self._show_info(f"注册成功（本地），远程同步失败：{msg}")
 
     def _attempt_login(self):
         username = self.username_input.text().strip()

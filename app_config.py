@@ -5,6 +5,7 @@ app_config — 共享配置管理和密码工具
 import sys
 import os
 import json
+import shutil
 import hashlib
 from pathlib import Path
 
@@ -22,14 +23,25 @@ class ConfigManager:
 
     @property
     def base_dir(self):
-        """可执行文件 / 脚本所在目录（配置与数据都放在这里）"""
+        """运行时文件目录：打包后为 exe 旁的 appdata 文件夹，保持 exe 目录整洁"""
         if getattr(sys, 'frozen', False):
-            return Path(sys.executable).parent
+            d = Path(sys.executable).parent / "appdata"
+            d.mkdir(parents=True, exist_ok=True)
+            return d
         return Path(__file__).resolve().parent
 
     def _resolve_config_path(self, filename):
-        """PyInstaller 打包模式下 config 在 exe 旁边；开发模式在脚本旁边"""
+        """config.json 位于运行时目录（打包后为 appdata/）"""
         return self.base_dir / filename
+
+    @staticmethod
+    def _bundled_config_path():
+        """PyInstaller 打包内置的 config.json（用于首次运行引导复制）"""
+        if not getattr(sys, 'frozen', False):
+            return None
+        meipass = getattr(sys, '_MEIPASS', None)
+        base = Path(meipass) if meipass else Path(sys.executable).parent
+        return base / "config.json"
 
     def is_dev_mode(self):
         return not getattr(sys, 'frozen', False)
@@ -58,6 +70,16 @@ class ConfigManager:
         if self._config_path.exists():
             with open(self._config_path, "r", encoding="utf-8") as f:
                 self._data = self._deep_merge(self._data, json.load(f))
+        else:
+            # 首次运行：从打包内置的 config.json 复制引导配置到 appdata/
+            bundled = self._bundled_config_path()
+            if bundled is not None and bundled.exists():
+                try:
+                    with open(bundled, "r", encoding="utf-8") as f:
+                        self._data = self._deep_merge(self._data, json.load(f))
+                    shutil.copyfile(bundled, self._config_path)
+                except Exception:
+                    pass
 
         # 叠加私有仓库同步下来的远程配置（网络引导项除外，避免循环依赖）
         overlay = self.data_dir / "config.json"
@@ -267,6 +289,14 @@ class ConfigManager:
         })
         self.save_local_state()
         return True
+
+    def remove_registered_user(self, username):
+        """移除本地注册用户（同步到远程成功后调用）"""
+        users = self._local_state.get("registered_users", [])
+        new = [u for u in users if u.get("username") != username]
+        if len(new) != len(users):
+            self._local_state["registered_users"] = new
+            self.save_local_state()
 
     def all_users(self):
         """远程管理账户 + 本地注册账户"""
