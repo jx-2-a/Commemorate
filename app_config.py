@@ -195,6 +195,10 @@ class ConfigManager:
     def app_version(self):
         return self._data.get("app", {}).get("version", "1.0.0")
 
+    @app_version.setter
+    def app_version(self, value):
+        self._data.setdefault("app", {})["version"] = value
+
     @property
     def app_name(self):
         return self._data.get("app", {}).get("name", "Commemorate")

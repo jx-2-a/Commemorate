@@ -487,6 +487,9 @@ if __name__ == "__main__":
             action = ["skip"]
             _run_download(update_mgr, action)
             if action[0] == "install":
+                # 更新已安排：把本地版本号同步为新版本，重启后不再重复提示
+                config.app_version = preflight["latest"]
+                config.save()
                 stop_sync_thread()
                 window._shutdown()
                 sys.exit(0)
