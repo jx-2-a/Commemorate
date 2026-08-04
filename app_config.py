@@ -109,6 +109,12 @@ class ConfigManager:
         else:
             self._local_state = {}
 
+        # 本地只保留 token 与“记住我”勾选状态，账号信息一律来自远程
+        self._local_state = {
+            k: v for k, v in self._local_state.items() if k in ("github_token", "remembered")
+        }
+        self._local_state.setdefault("remembered", {})
+
         # 兼容旧版本：把 config.json 里的“记住我”迁移到本地个人配置
         if not self._local_state.get("remembered", {}).get("username"):
             old = self._data.get("remembered", {})
@@ -273,34 +279,9 @@ class ConfigManager:
     def local_users(self):
         return self._data.get("auth", {}).get("local_users", [])
 
-    @property
-    def registered_users(self):
-        """本地注册的用户（保存在 local_state.json，不同步远程）"""
-        return self._local_state.get("registered_users", [])
-
-    def add_registered_user(self, username, password_hash):
-        users = self._local_state.setdefault("registered_users", [])
-        if any(u.get("username") == username for u in users):
-            return False
-        users.append({
-            "username": username,
-            "password_hash": password_hash,
-            "display_name": username,
-        })
-        self.save_local_state()
-        return True
-
-    def remove_registered_user(self, username):
-        """移除本地注册用户（同步到远程成功后调用）"""
-        users = self._local_state.get("registered_users", [])
-        new = [u for u in users if u.get("username") != username]
-        if len(new) != len(users):
-            self._local_state["registered_users"] = new
-            self.save_local_state()
-
     def all_users(self):
-        """远程管理账户 + 本地注册账户"""
-        return list(self.local_users) + list(self.registered_users)
+        """可登录账户：全部来自远程 config.json 的 auth.local_users"""
+        return list(self.local_users)
 
     @property
     def commemorative_date(self):
@@ -339,19 +320,6 @@ class ConfigManager:
         self.remember_me = checked
         self.save_local_state()
 
-    def set_pending_auto_login(self, username, password):
-        """记录更新重启后的一次性自动登录信息"""
-        self._local_state["auto_login"] = {"username": username, "password": password}
-        self.save_local_state()
-
-    def take_pending_auto_login(self):
-        """取出并清除待自动登录信息，返回 (用户名, 密码) 或 (None, None)"""
-        entry = self._local_state.get("auto_login")
-        if entry:
-            self._local_state.pop("auto_login", None)
-            self.save_local_state()
-            return entry.get("username", ""), entry.get("password", "")
-        return None, None
 
 
 # ── 密码哈希工具 ───────────────────────────────────────────

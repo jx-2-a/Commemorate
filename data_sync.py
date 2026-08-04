@@ -326,6 +326,7 @@ class DataSyncManager(QObject):
                 return
             users.append(user)
             new_bytes = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+            self._reg_new_bytes = new_bytes
             body = {
                 "message": f"register: {user['username']}",
                 "content": base64.b64encode(new_bytes).decode("ascii"),
@@ -346,6 +347,13 @@ class DataSyncManager(QObject):
             if reply.error() != QNetworkReply.NoError:
                 self.remote_config_done.emit(False, f"写入远程配置失败: {reply.errorString()}")
             else:
+                # 同步更新本地 data/config.json，保证注册后立即可登录
+                try:
+                    dest = self.config.data_dir / "config.json"
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(self._reg_new_bytes)
+                except Exception:
+                    pass
                 self.remote_config_done.emit(True, "已同步到远程")
         finally:
             reply.deleteLater()

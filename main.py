@@ -411,8 +411,6 @@ if __name__ == "__main__":
     from data_sync import SyncWorker
 
     window = CommemorateWindow(config)
-    pending_user, pending_pass = config.take_pending_auto_login()
-    login_username, login_password = "", ""
     sync_result = {"success": False, "sync_errors": [], "preflight": None}
 
     login = LoginWindow(config)
@@ -429,16 +427,6 @@ if __name__ == "__main__":
             login.update_sync_state("failed", detail)
             return
         config.reload()
-        if pending_user and config.auth_mode == "local":
-            from app_config import verify_password
-            ok = any(
-                u.get("username") == pending_user
-                and verify_password(pending_pass, u.get("password_hash", ""))
-                for u in config.all_users()
-            )
-            if ok:
-                login.auto_login(pending_user, pending_pass)
-                return
         login.update_sync_state("ready")
 
     def start_sync_thread():
@@ -482,8 +470,6 @@ if __name__ == "__main__":
         stop_sync_thread()
         window._shutdown()
         sys.exit(0)
-    login_username = login.username()
-    login_password = login.password()
 
     # ---- 登录成功后：如需更新，把登录界面换成更新界面 ----
     preflight = sync_result.get("preflight")
@@ -498,8 +484,6 @@ if __name__ == "__main__":
             action = ["skip"]
             _run_download(update_mgr, action)
             if action[0] == "install":
-                # 保留登录信息：重启后自动登录，直接进入主窗口
-                config.set_pending_auto_login(login_username, login_password)
                 stop_sync_thread()
                 window._shutdown()
                 sys.exit(0)

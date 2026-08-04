@@ -40,9 +40,9 @@ GitHub 私有仓库 my-app-data（配置与数据）
 
 3. 把 [examples/version.json](examples/version.json) 复制到私有仓库根目录。`download_url` 支持 `{version}` 占位符，会自动替换成 `version` 字段的版本号；发布后填上 `app.zip` 的 SHA-256。
 4. 私有仓库放好 `config.json`、`data.csv`、`rules.txt`。远程 `config.json` 使用与本地相同的格式，`update` / `sync` 段会被忽略（防止循环依赖）。
-5. 远程 `config.json` 的 `auth` 段可配置注册策略：`allow_register`（是否开放注册）、`max_users`（用户数量上限）、`local_users`（管理账户与密码）。注册的新账户保存在本地 `local_state.json`（已加入 .gitignore），"记住我"登录信息也只存本地，均不参与远程同步。
+5. 远程 `config.json` 的 `auth` 段可配置注册策略：`allow_register`（是否开放注册）、`max_users`（用户数量上限）、`local_users`（管理账户与密码）。**账号信息一律来自远程**：登录校验、注册（写入 `auth.local_users`）都以远程配置为准，注册需要网络，远程写入成功才算注册成功；本地不保存任何账号。
 
-注册成功后应用会自动把新账号同步到远程 `config.json`（写入 `auth.local_users`，需要 token），其他设备下次同步即可登录；若网络不可用，账号先保留在本地，登录窗口会提示远程同步失败。
+本地 `local_state.json` 只保留两类数据：GitHub 令牌（`github_token`）和"记住我"勾选状态（`remembered`，含用户名），均不参与远程同步。
 
 ## 打包目录结构
 
@@ -52,10 +52,12 @@ GitHub 私有仓库 my-app-data（配置与数据）
 Commemorate.exe
 └── appdata/
     ├── config.json          ← 引导配置（首次运行从内置副本自动生成）
-    ├── local_state.json     ← 记住登录 / 注册用户 / 本地令牌
+    ├── local_state.json     ← 仅存 GitHub 令牌与“记住我”勾选状态
     ├── commemorate.log      ← 崩溃日志
-    └── data/                ← 私有仓库同步的数据文件
+    └── data/                ← 私有仓库同步的数据文件（version.json / config.json / data.csv / rules.txt）
 ```
+
+数据读取位置：同步数据放在 `appdata/data/`（打包后）或 `data/`（开发模式），本地个人数据放在 `appdata/local_state.json`，引导配置为 `appdata/config.json`。
 
 ## 发布新版本
 

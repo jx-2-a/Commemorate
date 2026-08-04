@@ -584,36 +584,34 @@ class LoginWindow(QDialog):
             self._show_error(f"用户数量已达上限（{self.config.auth_max_users} 个）")
             return
 
-        self.config.add_registered_user(username, hash_password(password))
-        self._show_login_page()
-        self.username_input.setText(username)
-        self.password_input.clear()
-        self.password_input.setFocus()
-        self._show_info("注册成功，正在同步远程…")
-        self._start_remote_register_sync(username)
+        # 账号信息只存远程：注册即推送远程 config.json，成功才算注册成功
+        self.login_btn.setEnabled(False)
+        self.login_btn.setText("注册中...")
+        self._show_info("正在注册并同步远程…")
+        self._start_remote_register_sync(username, hash_password(password))
 
-    def _start_remote_register_sync(self, username):
-        """把新注册用户同步到远程 config.json（异步，不阻塞界面）"""
+    def _start_remote_register_sync(self, username, password_hash):
+        """把新注册用户写入远程 config.json（异步，不阻塞界面）"""
         from data_sync import DataSyncManager
-        user = next(
-            (u for u in self.config.registered_users if u.get("username") == username),
-            None,
-        )
-        if user is None:
-            return
         self._reg_sync_mgr = DataSyncManager(self.config, self)
         self._reg_sync_mgr.remote_config_done.connect(
             lambda ok, msg, uname=username: self._on_register_synced(ok, msg, uname)
         )
-        self._reg_sync_mgr.push_registered_user(user["username"], user["password_hash"])
+        self._reg_sync_mgr.push_registered_user(username, password_hash)
 
     def _on_register_synced(self, ok, msg, username):
-        """注册用户远程同步结果"""
+        """注册结果：成功切回登录页，失败留在注册页"""
+        self.login_btn.setEnabled(True)
         if ok:
-            self.config.remove_registered_user(username)
+            self.config.reload()
+            self._show_login_page()
+            self.username_input.setText(username)
+            self.password_input.clear()
+            self.password_input.setFocus()
             self._show_info("注册成功，账号已同步到远程")
         else:
-            self._show_info(f"注册成功（本地），远程同步失败：{msg}")
+            self.login_btn.setText("注  册")
+            self._show_error(f"注册失败：{msg}")
 
     def _attempt_login(self):
         username = self.username_input.text().strip()
@@ -750,13 +748,6 @@ class LoginWindow(QDialog):
             }}
         """)
         self.error_label.setVisible(True)
-
-    def auto_login(self, username, password):
-        """更新重启后自动登录，直接进入主流程"""
-        self._login_username = username
-        self._login_password = password
-        self._auth_result = True
-        self.accept()
 
     # ── 鼠标事件（拖拽窗口 & 关闭按钮）──────────────────
 
