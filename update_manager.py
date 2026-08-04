@@ -13,7 +13,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from PyQt5.QtCore import Qt, QObject, QUrl, pyqtSignal, QEventLoop
+from PyQt5.QtCore import Qt, QObject, QUrl, QTimer, pyqtSignal, QEventLoop
 from PyQt5.QtGui import QColor, QFont, QLinearGradient, QPainter, QBrush, QPen
 from PyQt5.QtWidgets import (
     QDialog, QLabel, QMessageBox, QPushButton, QProgressDialog,
@@ -71,6 +71,9 @@ class UpdateManager(QObject):
         self._manager = QNetworkAccessManager(self)
         self._download_reply = None
         self._latest_data = {}
+        self._progress_timer = QTimer(self)
+        self._progress_timer.setInterval(150)
+        self._progress_timer.timeout.connect(self._poll_progress)
 
     def check_for_update(self):
         """向服务器查询最新版本"""
@@ -137,6 +140,7 @@ class UpdateManager(QObject):
         self._download_reply = self._manager.get(request)
         self._download_reply.downloadProgress.connect(self._on_progress)
         self._download_reply.finished.connect(self._on_download_finished)
+        self._progress_timer.start()
 
     def _on_progress(self, received, total):
         if total > 0:
@@ -146,7 +150,23 @@ class UpdateManager(QObject):
             # 服务器未提供总大小：发送 -1，UI 显示为忙碌动画
             self.download_progress.emit(-1)
 
+    def _poll_progress(self):
+        """定时轮询当前下载进度（比 downloadProgress 信号更稳定，避免嵌套事件循环中 UI 不刷新）"""
+        reply = self._download_reply
+        if reply is None:
+            return
+        try:
+            total = reply.bytesTotal()
+            received = reply.bytesReceived()
+        except Exception:
+            return
+        if total > 0:
+            self.download_progress.emit(int(received / total * 100))
+        else:
+            self.download_progress.emit(-1)
+
     def _on_download_finished(self):
+        self._progress_timer.stop()
         reply = self._download_reply
         if reply.error() != QNetworkReply.NoError:
             self.error_occurred.emit(f"下载失败: {reply.errorString()}")
@@ -210,10 +230,16 @@ class UpdateManager(QObject):
             # 2. 把新 exe 复制到原位置
             shutil.copy2(source, target)
 
-            # 3. 直接启动新 exe（绝对路径，等效于手动双击，避免 DLL 加载问题）
+            # 3. 启动新 exe 前清除 _MEIPASS2：PyInstaller onefile 会让子进程
+            #    复用旧进程已解压的临时目录（_MEIPASS2 环境变量），而旧进程
+            #    退出时会清理该目录，导致新进程找不到 python311.dll 等文件。
+            #    清除后新进程会重新解压到自己的临时目录（等效于手动双击）。
+            clean_env = dict(os.environ)
+            clean_env.pop("_MEIPASS2", None)
             subprocess.Popen(
                 [str(target)],
                 cwd=str(target.parent),
+                env=clean_env,
             )
         except Exception as e:
             self.error_occurred.emit(f"更新安装失败: {e}")
