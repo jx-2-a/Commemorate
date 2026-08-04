@@ -245,10 +245,16 @@ class LoginWindow(QDialog):
         self.upd_status.setGeometry(60, 400, 300, 30)
 
         self.cancel_update_btn = QPushButton("取消下载", self)
-        self.cancel_update_btn.setGeometry(70, 435, 280, 30)
+        self.cancel_update_btn.setGeometry(70, 435, 280, 32)
         self.cancel_update_btn.setCursor(Qt.PointingHandCursor)
         self.cancel_update_btn.setFocusPolicy(Qt.NoFocus)
         self.cancel_update_btn.clicked.connect(lambda: self.update_action.emit("cancel"))
+
+        self.skip_update_btn = QPushButton("本次跳过", self)
+        self.skip_update_btn.setGeometry(70, 435, 280, 32)
+        self.skip_update_btn.setCursor(Qt.PointingHandCursor)
+        self.skip_update_btn.setFocusPolicy(Qt.NoFocus)
+        self.skip_update_btn.clicked.connect(lambda: self.update_action.emit("skip"))
 
         self._hide_update_panel()
 
@@ -539,6 +545,22 @@ class LoginWindow(QDialog):
             QPushButton:hover {{
                 color: {ACCENT_PINK.name()};
                 border-color: {ACCENT_PINK.name()};
+                background: rgba(60, 30, 80, 160);
+            }}
+        """)
+
+        self.skip_update_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: {TEXT_MUTED.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 13px;
+                border: 1.5px solid rgba(120, 80, 140, 160);
+                border-radius: 15px;
+                background: rgba(30, 15, 50, 140);
+            }}
+            QPushButton:hover {{
+                color: {ERROR_COLOR.name()};
+                border-color: {ERROR_COLOR.name()};
                 background: rgba(60, 30, 80, 160);
             }}
         """)
@@ -906,7 +928,7 @@ class LoginWindow(QDialog):
     def _hide_update_panel(self):
         for w in (self.upd_title, self.upd_version, self.upd_changelog,
                   self.update_btn, self.upd_progress, self.upd_status,
-                  self.cancel_update_btn):
+                  self.cancel_update_btn, self.skip_update_btn):
             w.setVisible(False)
 
     def show_update_panel(self, latest, current, changelog=""):
@@ -935,10 +957,12 @@ class LoginWindow(QDialog):
         self.update_btn.setEnabled(True)
         self.update_btn.setText("立即更新")
         self.cancel_update_btn.setVisible(False)
+        self.skip_update_btn.setVisible(True)
         self.upd_title.setVisible(True)
         self.upd_version.setVisible(True)
         self.upd_changelog.setVisible(True)
         self.update_btn.setVisible(True)
+        self.skip_update_btn.setVisible(True)
         self._update_active = False
 
     def set_update_state(self, state, data=None):
@@ -948,9 +972,11 @@ class LoginWindow(QDialog):
             self._update_active = True
             self.update_btn.setEnabled(False)
             self.update_btn.setText("更新中...")
+            self.upd_progress.setRange(0, 100)
             self.upd_progress.setValue(0)
             self.upd_progress.setVisible(True)
             self.cancel_update_btn.setVisible(True)
+            self.skip_update_btn.setVisible(False)
             self.upd_status.setText("正在下载更新包...")
             self.upd_status.setStyleSheet(f"""
                 QLabel {{
@@ -962,14 +988,27 @@ class LoginWindow(QDialog):
             """)
         elif state == "downloading":
             pct = int(data.get("percent", 0) or 0)
-            self.upd_progress.setValue(pct)
-            self.upd_status.setText(f"正在下载更新包... {pct}%")
+            if pct < 0:
+                # 未知总大小：进度条进入忙碌动画，不显示具体百分比
+                self.upd_progress.setRange(0, 0)
+                self.upd_progress.setValue(0)
+                self.upd_status.setText("正在下载更新包...")
+            else:
+                if self.upd_progress.maximum() == 0:
+                    self.upd_progress.setRange(0, 100)
+                self.upd_progress.setValue(min(100, pct))
+                self.upd_status.setText(f"正在下载更新包... {pct}%")
+            # 强制立即重绘，避免嵌套事件循环中进度条不刷新
+            self.upd_progress.repaint()
+            self.upd_status.repaint()
+            QApplication.processEvents()
         elif state == "error":
             self._update_active = False
             self.update_btn.setEnabled(True)
             self.update_btn.setText("重试更新")
             self.upd_progress.setVisible(False)
             self.cancel_update_btn.setVisible(False)
+            self.skip_update_btn.setVisible(True)
             self.upd_status.setText(str(data.get("message", "更新失败，请重试")))
             self.upd_status.setStyleSheet(f"""
                 QLabel {{
@@ -985,6 +1024,7 @@ class LoginWindow(QDialog):
             self.update_btn.setText("更新完成")
             self.upd_progress.setVisible(False)
             self.cancel_update_btn.setVisible(False)
+            self.skip_update_btn.setVisible(False)
             self.upd_status.setText("更新完成，正在重启...")
             self.upd_status.setStyleSheet(f"""
                 QLabel {{

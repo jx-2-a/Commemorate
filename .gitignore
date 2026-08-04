@@ -12,3 +12,4 @@ venv/
 *.spec.bak
 test_old/
 test_release/
+test_manual/

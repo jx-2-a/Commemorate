@@ -479,7 +479,8 @@ if __name__ == "__main__":
             latest_data.get("changelog", ""),
         )
 
-        # 等待用户操作：start（立即更新）/ cancel（取消下载后重试）/ close（关闭退出）
+        # 等待用户操作：start（立即更新）/ cancel（取消下载后重试）
+        #              / skip（本次跳过，进入主窗口）/ close（关闭退出）
         while True:
             action = ["close"]
             wait_loop = QEventLoop()
@@ -491,6 +492,11 @@ if __name__ == "__main__":
             login.update_action.connect(on_update_action)
             wait_loop.exec_()
             login.update_action.disconnect(on_update_action)
+
+            if action[0] == "skip":
+                # 本次跳过：进入主窗口，下次登录仍会提示
+                login.accept()
+                return
 
             if action[0] != "start":
                 login.reject()
@@ -506,6 +512,7 @@ if __name__ == "__main__":
                 login.set_update_state("downloading", {"percent": pct})
 
             def on_download_finished(filepath):
+                login.set_update_state("downloading", {"percent": 100})
                 if config.is_dev_mode():
                     login.set_update_state("error", {"message": "开发模式不支持自动更新，请用 git pull 拉取最新代码"})
                 else:

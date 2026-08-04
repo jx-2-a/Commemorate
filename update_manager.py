@@ -1,13 +1,14 @@
 """
 UpdateManager — 版本检查 & 自动更新
 异步检查私有仓库 version.json，从公开仓库 Release/app.zip 下载更新包，
-校验 SHA-256 后解压，生成 updater.bat 替换脚本
+校验 SHA-256 后解压，替换 exe 并直接启动新版本
 """
 import hashlib
 import os
 import sys
 import json
 import shutil
+import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
@@ -128,7 +129,6 @@ class UpdateManager(QObject):
         save_path = save_dir / "app.zip"
         self._save_path = str(save_path)
         self._zip_path = str(save_path)
-
         request = QNetworkRequest(QUrl(download_url))
         request.setAttribute(
             QNetworkRequest.RedirectPolicyAttribute,
@@ -142,6 +142,9 @@ class UpdateManager(QObject):
         if total > 0:
             percent = int(received / total * 100)
             self.download_progress.emit(percent)
+        else:
+            # 服务器未提供总大小：发送 -1，UI 显示为忙碌动画
+            self.download_progress.emit(-1)
 
     def _on_download_finished(self):
         reply = self._download_reply
@@ -188,72 +191,32 @@ class UpdateManager(QObject):
             self._download_reply.abort()
 
     def schedule_update(self, new_exe_path: str):
-        """生成 updater.bat 并启动"""
+        """替换 exe 并直接启动新版本（不依赖 bat，避免 DLL 加载问题）"""
         if not getattr(sys, 'frozen', False):
             self.error_occurred.emit("开发模式不支持自动更新，请手动拉取代码")
             return
 
         target_exe = sys.executable
         source = Path(new_exe_path)
-        tmp_dir = source.parent
+        target = Path(target_exe)
 
-        # 更新脚本放在本地数据目录 appdata/local/
-        bat_dir = Path(target_exe).parent / "appdata" / "local"
-        bat_path = bat_dir / "updater.bat"
+        try:
+            # 1. 把正在运行的旧 exe 改名为 .old（Windows 允许重命名运行中的 exe）
+            backup = target.with_name(target.name + ".old")
+            if backup.exists():
+                backup.unlink()
+            target.rename(backup)
 
-        bat_content = f'''@echo off
-setlocal enabledelayedexpansion
-chcp 65001 >nul
+            # 2. 把新 exe 复制到原位置
+            shutil.copy2(source, target)
 
-set "TARGET={target_exe}"
-set "SOURCE={new_exe_path}"
-set "TMPDIR={tmp_dir}"
-set "BAT_FILE=%0"
-
-echo.
-echo  ╔══════════════════════════════════╗
-echo  ║     Commemorate  更新程序        ║
-echo  ╚══════════════════════════════════╝
-echo.
-
-echo  等待主程序关闭...
-set /a COUNT=0
-:WAIT_LOOP
-    tasklist /FI "IMAGENAME eq Commemorate.exe" 2>NUL | find /I "Commemorate.exe" >NUL
-    if errorlevel 1 goto REPLACE
-    timeout /t 1 /nobreak >NUL
-    set /a COUNT+=1
-    if !COUNT! geq 15 goto FORCE
-    goto WAIT_LOOP
-
-:FORCE
-echo  强制关闭残留进程...
-taskkill /F /IM Commemorate.exe 2>NUL
-timeout /t 2 /nobreak >NUL
-
-:REPLACE
-echo  正在更新文件...
-move /Y "%SOURCE%" "%TARGET%" >NUL 2>&1
-if errorlevel 1 (
-    echo  更新失败！请手动替换文件。
-    pause
-    exit /b 1
-)
-
-echo  更新完成！正在启动...
-start "" "%TARGET%"
-
-timeout /t 3 /nobreak >NUL
-rmdir /s /q "%TMPDIR%" 2>NUL
-del "%BAT_FILE%" 2>NUL
-(goto) 2>nul & del "%~f0"
-endlocal
-'''
-
-        with open(bat_path, "w", encoding="utf-8") as f:
-            f.write(bat_content)
-
-        os.startfile(str(bat_path))
+            # 3. 直接启动新 exe（绝对路径，等效于手动双击，避免 DLL 加载问题）
+            subprocess.Popen(
+                [str(target)],
+                cwd=str(target.parent),
+            )
+        except Exception as e:
+            self.error_occurred.emit(f"更新安装失败: {e}")
 
 
 # ── 更新提示对话框 ─────────────────────────────────────────

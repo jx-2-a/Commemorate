@@ -16,7 +16,6 @@ from PyQt5.QtWidgets import QProgressDialog
 
 from app_config import ConfigManager
 
-
 RAW_BASE = "https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
 API_BASE = "https://api.github.com/repos/{owner}/{repo}/contents/{path}"
 GIT_TREE_URL = "https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
