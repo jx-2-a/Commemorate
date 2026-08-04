@@ -15,7 +15,9 @@ class ConfigManager:
     def __init__(self, config_filename="config.json"):
         self._config_path = self._resolve_config_path(config_filename)
         self._data = {}
+        self._local_state = {}
         self._load()
+        self._load_local_state()
 
     # ---------- 路径 ----------
 
@@ -41,6 +43,11 @@ class ConfigManager:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
+    @property
+    def local_state_path(self):
+        """本地个人配置（记住登录、注册用户），不参与远程同步"""
+        return self.base_dir / "local_state.json"
+
     # ---------- 读写 ----------
 
     def _load(self):
@@ -57,10 +64,32 @@ class ConfigManager:
                     remote = json.load(f)
                 remote.pop("update", None)
                 remote.pop("sync", None)
+                remote.pop("remembered", None)
                 self._data = self._deep_merge(self._data, remote)
             except Exception:
                 # 远程配置损坏时忽略，继续使用本地配置
                 pass
+
+    def _load_local_state(self):
+        if self.local_state_path.exists():
+            try:
+                with open(self.local_state_path, "r", encoding="utf-8") as f:
+                    self._local_state = json.load(f)
+            except Exception:
+                self._local_state = {}
+        else:
+            self._local_state = {}
+
+        # 兼容旧版本：把 config.json 里的“记住我”迁移到本地个人配置
+        if not self._local_state.get("remembered", {}).get("username"):
+            old = self._data.get("remembered", {})
+            if old.get("username") or old.get("remember_me"):
+                self._local_state["remembered"] = old
+
+    def save_local_state(self):
+        """保存本地个人配置（不推送远程）"""
+        with open(self.local_state_path, "w", encoding="utf-8") as f:
+            json.dump(self._local_state, f, ensure_ascii=False, indent=4)
 
     @staticmethod
     def _deep_merge(base: dict, override: dict) -> dict:
@@ -97,6 +126,8 @@ class ConfigManager:
                 "mode": "local",
                 "api_url": "",
                 "request_timeout_seconds": 5,
+                "allow_register": False,
+                "max_users": 1,
                 "local_users": []
             },
             "commemorate": {
@@ -192,8 +223,39 @@ class ConfigManager:
         return self._data.get("auth", {}).get("request_timeout_seconds", 5)
 
     @property
+    def auth_allow_register(self):
+        """远程设置：是否开放注册"""
+        return self._data.get("auth", {}).get("allow_register", False)
+
+    @property
+    def auth_max_users(self):
+        """远程设置：允许的用户数量上限"""
+        return self._data.get("auth", {}).get("max_users", 1)
+
+    @property
     def local_users(self):
         return self._data.get("auth", {}).get("local_users", [])
+
+    @property
+    def registered_users(self):
+        """本地注册的用户（保存在 local_state.json，不同步远程）"""
+        return self._local_state.get("registered_users", [])
+
+    def add_registered_user(self, username, password_hash):
+        users = self._local_state.setdefault("registered_users", [])
+        if any(u.get("username") == username for u in users):
+            return False
+        users.append({
+            "username": username,
+            "password_hash": password_hash,
+            "display_name": username,
+        })
+        self.save_local_state()
+        return True
+
+    def all_users(self):
+        """远程管理账户 + 本地注册账户"""
+        return list(self.local_users) + list(self.registered_users)
 
     @property
     def commemorative_date(self):
@@ -213,24 +275,24 @@ class ConfigManager:
 
     @property
     def remembered_username(self):
-        return self._data.get("remembered", {}).get("username", "")
+        return self._local_state.get("remembered", {}).get("username", "")
 
     @remembered_username.setter
     def remembered_username(self, value):
-        self._data.setdefault("remembered", {})["username"] = value
+        self._local_state.setdefault("remembered", {})["username"] = value
 
     @property
     def remember_me(self):
-        return self._data.get("remembered", {}).get("remember_me", False)
+        return self._local_state.get("remembered", {}).get("remember_me", False)
 
     @remember_me.setter
     def remember_me(self, value):
-        self._data.setdefault("remembered", {})["remember_me"] = value
+        self._local_state.setdefault("remembered", {})["remember_me"] = value
 
     def save_remember_me(self, username, checked):
         self.remembered_username = username if checked else ""
         self.remember_me = checked
-        self.save()
+        self.save_local_state()
 
 
 # ── 密码哈希工具 ───────────────────────────────────────────

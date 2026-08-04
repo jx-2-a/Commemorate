@@ -32,6 +32,8 @@
         "mode": "local",
         "api_url": "",
         "request_timeout_seconds": 5,
+        "allow_register": false,
+        "max_users": 1,
         "local_users": [
             {
                 "username": "admin",

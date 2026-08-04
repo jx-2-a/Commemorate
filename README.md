@@ -38,6 +38,7 @@ GitHub 私有仓库 my-app-data（配置与数据）
 
 3. 把 [examples/version.json](examples/version.json) 复制到私有仓库根目录。`download_url` 支持 `{version}` 占位符，会自动替换成 `version` 字段的版本号；发布后填上 `app.zip` 的 SHA-256。
 4. 私有仓库放好 `config.json`、`data.csv`、`rules.txt`。远程 `config.json` 使用与本地相同的格式，`update` / `sync` 段会被忽略（防止循环依赖）。
+5. 远程 `config.json` 的 `auth` 段可配置注册策略：`allow_register`（是否开放注册）、`max_users`（用户数量上限）、`local_users`（管理账户与密码）。注册的新账户保存在本地 `local_state.json`（已加入 .gitignore），"记住我"登录信息也只存本地，均不参与远程同步。
 
 ## 发布新版本
 

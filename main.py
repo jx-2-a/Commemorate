@@ -142,7 +142,6 @@ class CommemorateWindow(QWidget):
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
-            | Qt.Tool
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
@@ -182,6 +181,19 @@ class CommemorateWindow(QWidget):
 
     def _show_time(self):
         self.time_displayed = True
+
+    def refresh_from_config(self):
+        """数据同步后刷新纪念信息（远程配置可能已更新）"""
+        self._comm_date = self.config.commemorative_date
+        self._comm_time = self.config.commemorative_time
+        self._comm_title = self.config.commemorative_title
+        self._comm_subtitle = self.config.commemorative_subtitle
+        try:
+            past = datetime.strptime(f"{self._comm_date} {self._comm_time}", "%Y-%m-%d %H:%M")
+            self.days_passed = (datetime.now() - past).days
+        except ValueError:
+            self.days_passed = 0
+        self.update()
 
     def _tick(self):
         try:
@@ -383,10 +395,15 @@ if __name__ == "__main__":
         QMessageBox.information(None, "数据同步", msg)
         sys.exit(0)
 
-    # ---- 登录阶段 ----
+    # ---- 快速启动：先创建并显示主窗口（空白动画背景），登录窗口叠在上面 ----
+    window = CommemorateWindow(config)
+    window.show()
+
+    # ---- 登录阶段（工具窗口） ----
     from login_window import LoginWindow
     login = LoginWindow(config)
     if login.exec_() != LoginWindow.Accepted:
+        window._shutdown()
         sys.exit(0)
 
     # ---- 数据同步（私有仓库 → 本地 data/） ----
@@ -394,6 +411,7 @@ if __name__ == "__main__":
         from data_sync import DataSyncManager, run_sync
         sync_mgr = DataSyncManager(config)
         run_sync(sync_mgr, "pull", show_progress=True)
+        window.refresh_from_config()
 
     # ---- 更新检查阶段 ----
     if config.update_auto_check and config.update_check_url:
@@ -401,9 +419,9 @@ if __name__ == "__main__":
         update_mgr = UpdateManager(config)
         action = show_update_dialog(update_mgr, config)
         if action == "install":
+            window._shutdown()
             sys.exit(0)  # 已安排更新，退出
 
-    # ---- 主窗口 ----
-    window = CommemorateWindow(config)
-    window.show()
+    # ---- 主窗口正式显示 ----
+    window.raise_()
     sys.exit(app.exec_())

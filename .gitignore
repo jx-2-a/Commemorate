@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 data/
 commemorate.log
+local_state.json
 .venv/
 venv/
 *.spec.bak
