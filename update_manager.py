@@ -134,6 +134,10 @@ class UpdateManager(QObject):
         self._zip_path = str(save_path)
 
         request = QNetworkRequest(QUrl(download_url))
+        request.setAttribute(
+            QNetworkRequest.RedirectPolicyAttribute,
+            QNetworkRequest.NoLessSafeRedirectPolicy,
+        )
         self._download_reply = self._manager.get(request)
         self._download_reply.downloadProgress.connect(self._on_progress)
         self._download_reply.finished.connect(self._on_download_finished)

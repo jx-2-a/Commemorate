@@ -7,8 +7,8 @@
 ```
 GitHub 公开仓库（代码 + 发布包）
 ├── Code
-└── Release
-       └── app.zip          ← 每次发布自动构建
+└── GitHub Releases
+       └── v1.1.0 / app.zip  ← 推 v* 标签自动构建发布
 
 GitHub 私有仓库 my-app-data（配置与数据）
 ├── version.json            ← 版本号 + 下载地址 + SHA-256
@@ -17,7 +17,7 @@ GitHub 私有仓库 my-app-data（配置与数据）
 └── rules.txt               ← 规则数据（可推送）
 ```
 
-更新链路：应用启动 → 读取私有仓库 `version.json` → 有新版则从公开仓库 `Release/app.zip` 下载 → 校验 SHA-256 → 解压 → `updater.bat` 替换 exe 并重启。
+更新链路：应用启动 → 读取私有仓库 `version.json` → 有新版则从公开仓库的 GitHub Releases 下载 `app.zip`（地址按版本号寻址，如 `releases/download/v1.1.0/app.zip`）→ 校验 SHA-256 → 解压 → `updater.bat` 替换 exe 并重启。
 
 数据同步链路：应用登录后 → 从私有仓库拉取 4 个文件到本地 `data/` 目录 → `config.json` 作为远程配置叠加生效；`data.csv` / `rules.txt` 可通过 `--sync-push` 推回仓库。
 
@@ -36,7 +36,7 @@ GitHub 私有仓库 my-app-data（配置与数据）
    | `sync.push_files` | 允许推回仓库的文件（避免远程配置被覆盖） |
    | `sync.push_token_env` | 读取 GitHub token 的环境变量名，默认 `GITHUB_TOKEN` |
 
-3. 把 [examples/version.json](examples/version.json) 复制到私有仓库根目录，改成你的公开仓库地址，并填上 `app.zip` 的 SHA-256。
+3. 把 [examples/version.json](examples/version.json) 复制到私有仓库根目录。`download_url` 支持 `{version}` 占位符，会自动替换成 `version` 字段的版本号；发布后填上 `app.zip` 的 SHA-256。
 4. 私有仓库放好 `config.json`、`data.csv`、`rules.txt`。远程 `config.json` 使用与本地相同的格式，`update` / `sync` 段会被忽略（防止循环依赖）。
 
 ## 发布新版本
@@ -49,11 +49,13 @@ pyinstaller --noconfirm Commemorate.spec
 
 把 `dist\Commemorate.exe` 压缩为 `Release\app.zip` 提交到公开仓库，然后更新私有仓库的 `version.json`（版本号、下载地址、SHA-256）。
 
+或用 GitHub 网页创建 Release：Tags 填 `v1.1.0`，把 `app.zip` 作为附件上传，再更新私有仓库 `version.json` 的版本号与 SHA-256。
+
 ### 方式二：GitHub Actions（推荐）
 
 仓库已内置 [.github/workflows/build.yml](.github/workflows/build.yml)：
 
-1. 推送标签 `v1.1.0` 到公开仓库，自动构建并提交 `Release/app.zip`。
+1. 推送标签 `v1.1.0` 到公开仓库，自动构建并把 `app.zip` 发布到 GitHub Releases（版本号命名，无分支名）。
 2. 如需自动更新私有仓库 `version.json`，在仓库 Settings → Secrets 中添加：
    - `DATA_TOKEN`：对私有仓库有 contents 写权限的 token
    - `DATA_REPO_OWNER`：你的用户名

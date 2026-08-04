@@ -26,16 +26,14 @@ jobs:
       - name: Build exe
         run: pyinstaller --noconfirm Commemorate.spec
 
-      - name: Package app.zip and commit to Release/
+      - name: Package app.zip and publish GitHub Release
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.GITHUB_TOKEN }}
         run: |
           New-Item -ItemType Directory -Force -Path Release | Out-Null
           Compress-Archive -Path dist\Commemorate.exe -DestinationPath Release\app.zip -Force
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Release/app.zip
-          git commit -m "build: package ${{ github.ref_name }}"
-          git push
+          gh release create "${{ github.ref_name }}" Release/app.zip --generate-notes
 
       - name: Update version.json in data repo
         shell: pwsh
@@ -51,7 +49,7 @@ jobs:
             version = $version
             release_date = (Get-Date -Format 'yyyy-MM-dd')
             changelog = "自动发布 v$version"
-            download_url = "https://raw.githubusercontent.com/${{ github.repository }}/main/Release/app.zip"
+            download_url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/app.zip"
             sha256 = $hash
           } | ConvertTo-Json
           $content = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
