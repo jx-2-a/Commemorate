@@ -1,0 +1,7 @@
+{
+  "version": "1.1.0",
+  "release_date": "2026-08-04",
+  "changelog": "新增 GitHub 私有仓库数据同步；更新包改为 app.zip",
+  "download_url": "https://raw.githubusercontent.com/<your-name>/<public-repo>/main/Release/app.zip",
+  "sha256": ""
+}

@@ -1,0 +1,53 @@
+{
+    "app": {
+        "version": "1.0.0",
+        "name": "Commemorate",
+        "build_date": "2025-08-04"
+    },
+    "update": {
+        "check_url": "",
+        "auto_check": true,
+        "skip_version": null
+    },
+    "sync": {
+        "repo_owner": "jx-2-a",
+        "repo_name": "Commemorate-data",
+        "branch": "main",
+        "use_api": true,
+        "local_dir": "data",
+        "files": [
+            "version.json",
+            "config.json",
+            "data.csv",
+            "rules.txt"
+        ],
+        "push_files": [
+            "data.csv",
+            "rules.txt"
+        ],
+        "auto_pull": true,
+        "push_token_env": "GITHUB_TOKEN"
+    },
+    "auth": {
+        "mode": "local",
+        "api_url": "",
+        "request_timeout_seconds": 5,
+        "local_users": [
+            {
+                "username": "admin",
+                "password_hash": "sha256:310282131c322e16f468ce508600da2c33bc9c8b471e3937afafcb7d73d07e73:14c6fc64ddda8c9b262a8c846880ee0e",
+                "display_name": "My Love"
+            }
+        ]
+    },
+    "commemorate": {
+        "date": "2021-06-15",
+        "time": "20:30",
+        "title": "遇见你",
+        "subtitle": "是我一生中最美丽的意外"
+    },
+    "remembered": {
+        "username": "",
+        "remember_me": false
+    }
+}

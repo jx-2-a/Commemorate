@@ -1,0 +1,72 @@
+name: Build & Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install PyQt5
+
+      - name: Build exe
+        run: pyinstaller --noconfirm Commemorate.spec
+
+      - name: Package app.zip and commit to Release/
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path Release | Out-Null
+          Compress-Archive -Path dist\Commemorate.exe -DestinationPath Release\app.zip -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Release/app.zip
+          git commit -m "build: package ${{ github.ref_name }}"
+          git push
+
+      - name: Update version.json in data repo
+        shell: pwsh
+        env:
+          DATA_TOKEN: ${{ secrets.DATA_TOKEN }}
+          DATA_REPO_OWNER: ${{ secrets.DATA_REPO_OWNER }}
+          DATA_REPO_NAME: ${{ secrets.DATA_REPO_NAME }}
+        if: env.DATA_TOKEN != '' && env.DATA_REPO_OWNER != '' && env.DATA_REPO_NAME != ''
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $hash = (Get-FileHash -Algorithm SHA256 "Release\app.zip").Hash.ToLower()
+          $json = @{
+            version = $version
+            release_date = (Get-Date -Format 'yyyy-MM-dd')
+            changelog = "自动发布 v$version"
+            download_url = "https://raw.githubusercontent.com/${{ github.repository }}/main/Release/app.zip"
+            sha256 = $hash
+          } | ConvertTo-Json
+          $content = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
+          $headers = @{
+            Authorization = "token $env:DATA_TOKEN"
+            Accept = "application/vnd.github+json"
+          }
+          $apiUrl = "https://api.github.com/repos/$env:DATA_REPO_OWNER/$env:DATA_REPO_NAME/contents/version.json"
+          try {
+            $existing = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get
+            $sha = $existing.sha
+          } catch {
+            $sha = $null
+          }
+          $body = @{ message = "release $version"; content = $content; branch = "main" }
+          if ($sha) { $body.sha = $sha }
+          Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Put `
+            -Body ($body | ConvertTo-Json -Depth 5) -ContentType "application/json"
