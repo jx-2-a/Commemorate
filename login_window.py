@@ -89,9 +89,15 @@ class LoginWindow(QDialog):
         self.setFixedSize(420, 520)
         self._center_on_screen()
         self._message_color = ERROR_COLOR
+        self._sync_ready = False
+        self._sync_status = "正在同步用户信息，请稍候…"
 
         self._setup_ui()
         self._apply_styles()
+
+        # 登录前需要等待后台同步成功，按钮先禁用
+        self.login_btn.setEnabled(False)
+        self.register_btn.setEnabled(False)
 
         # 淡入动画
         self._fade_timer = QTimer(self)
@@ -410,6 +416,9 @@ class LoginWindow(QDialog):
     # ── 登录逻辑 ────────────────────────────────────────
 
     def _open_register(self):
+        if not self._sync_ready:
+            self._show_error(self._sync_status)
+            return
         dlg = RegisterDialog(self.config, self)
         if dlg.exec_() == RegisterDialog.Accepted:
             self.username_input.setText(dlg.username())
@@ -420,6 +429,10 @@ class LoginWindow(QDialog):
     def _attempt_login(self):
         username = self.username_input.text().strip()
         password = self.password_input.text()
+
+        if not self._sync_ready:
+            self._show_error(self._sync_status)
+            return
 
         if not username or not password:
             self._show_error("请输入用户名和密码")
@@ -507,6 +520,42 @@ class LoginWindow(QDialog):
     def password(self):
         """最近一次登录成功的密码（用于更新重启后自动登录）"""
         return getattr(self, "_login_password", "")
+
+    def update_sync_state(self, state):
+        """登录前同步状态：syncing / ready / failed"""
+        if state == "ready":
+            self._sync_ready = True
+            self.login_btn.setEnabled(True)
+            self.register_btn.setEnabled(True)
+            self.error_label.setVisible(False)
+            return
+
+        self._sync_ready = False
+        self.login_btn.setEnabled(False)
+        self.register_btn.setEnabled(False)
+        if state == "syncing":
+            self._sync_status = "正在同步用户信息，请稍候…"
+            color = TEXT_MUTED
+        else:  # failed
+            self._sync_status = "用户信息同步失败，请检查网络后重新启动应用"
+            color = ERROR_COLOR
+        self.error_label.setText(self._sync_status)
+        self.error_label.setStyleSheet(f"""
+            QLabel {{
+                color: {color.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 12px;
+                background: transparent;
+            }}
+        """)
+        self.error_label.setVisible(True)
+
+    def auto_login(self, username, password):
+        """更新重启后自动登录，直接进入主流程"""
+        self._login_username = username
+        self._login_password = password
+        self._auth_result = True
+        self.accept()
 
     # ── 鼠标事件（拖拽窗口 & 关闭按钮）──────────────────
 

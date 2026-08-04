@@ -10,7 +10,7 @@ import json
 import os
 from pathlib import Path
 
-from PyQt5.QtCore import QObject, QTimer, QUrl, pyqtSignal, QEventLoop, Qt
+from PyQt5.QtCore import QObject, QTimer, QUrl, pyqtSignal, pyqtSlot, QEventLoop, Qt
 from PyQt5.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from PyQt5.QtWidgets import QProgressDialog
 
@@ -299,6 +299,48 @@ class DataSyncManager(QObject):
     @property
     def errors(self):
         return list(self._errors)
+
+
+class SyncWorker(QObject):
+    """后台线程执行的登录前同步 + 静默版本检查"""
+
+    finished = pyqtSignal(dict)
+
+    def __init__(self, config_filename="config.json", parent=None):
+        super().__init__(parent)
+        self._config_filename = config_filename
+
+    @pyqtSlot()
+    def run(self):
+        from app_config import ConfigManager
+        from update_manager import UpdateManager, preflight_update
+
+        # 在子线程内创建实例，确保网络对象绑定到本线程的事件循环
+        cfg = ConfigManager(self._config_filename)
+        mgr = DataSyncManager(cfg)
+        loop = QEventLoop()
+        mgr.sync_done.connect(loop.quit)
+        mgr.pull()
+        loop.exec_()
+
+        result = {
+            "success": not mgr.errors,
+            "sync_errors": mgr.errors,
+            "sync_done": mgr._done,
+            "preflight": None,
+            "preflight_error": None,
+        }
+        if result["success"]:
+            cfg.reload()
+            if cfg.update_auto_check and cfg.update_check_url:
+                um = UpdateManager(cfg)
+                pre = preflight_update(um, cfg)
+                if "error" in pre:
+                    result["preflight_error"] = pre["error"]
+                else:
+                    pre["latest_data"] = dict(um._latest_data)
+                    result["preflight"] = pre
+        self.finished.emit(result)
 
 
 def run_sync(sync_mgr: DataSyncManager, mode="pull", files=None, show_progress=True):

@@ -395,52 +395,66 @@ if __name__ == "__main__":
         QMessageBox.information(None, "数据同步", msg)
         sys.exit(0)
 
-    # ---- 登录前：同步用户信息与其他数据（哈希对比，仅下载有变化的文件） ----
-    if config.sync_auto_pull and "--skip-sync" not in args:
-        from data_sync import DataSyncManager, run_sync
-        sync_mgr = DataSyncManager(config)
-        run_sync(sync_mgr, "pull", show_progress=True)
-        config.reload()  # 重新加载远程配置（用户列表 / 纪念信息）
-
-    # ---- 登录前：静默版本检查（与数据同步同时完成） ----
-    update_mgr = None
-    preflight = {}
-    if config.update_auto_check and config.update_check_url:
-        from update_manager import UpdateManager, preflight_update
-        update_mgr = UpdateManager(config)
-        preflight = preflight_update(update_mgr, config)
-
-    # ---- 后台预创建主窗口（先不显示），启动后只有登录窗口 ----
-    window = CommemorateWindow(config)
-
-    # ---- 登录阶段：更新重启后自动登录；否则显示登录窗口 ----
+    # ---- 先出窗口：后台预创建主窗口（不显示），立即显示登录窗口 ----
     from login_window import LoginWindow
+    from data_sync import SyncWorker
+
+    window = CommemorateWindow(config)
     pending_user, pending_pass = config.take_pending_auto_login()
     login_username, login_password = "", ""
-    auto_login_ok = False
+    sync_result = {"success": False, "sync_errors": [], "preflight": None}
 
-    if pending_user and config.auth_mode == "local":
-        from app_config import verify_password
-        for u in config.all_users():
-            if u.get("username") == pending_user and verify_password(
-                pending_pass, u.get("password_hash", "")
-            ):
-                login_username, login_password = pending_user, pending_pass
-                auto_login_ok = True
-                break
+    login = LoginWindow(config)
+    login.update_sync_state("syncing")
 
-    if not auto_login_ok:
-        login = LoginWindow(config)
-        if login.exec_() != LoginWindow.Accepted:
-            window._shutdown()
-            sys.exit(0)
-        login_username = login.username()
-        login_password = login.password()
+    def finalize_sync(result):
+        """同步线程结束：成功则重载配置并解锁登录，失败则阻止登录"""
+        sync_result.update(result)
+        if not result.get("success"):
+            login.update_sync_state("failed")
+            return
+        config.reload()
+        if pending_user and config.auth_mode == "local":
+            from app_config import verify_password
+            ok = any(
+                u.get("username") == pending_user
+                and verify_password(pending_pass, u.get("password_hash", ""))
+                for u in config.all_users()
+            )
+            if ok:
+                login.auto_login(pending_user, pending_pass)
+                return
+        login.update_sync_state("ready")
+
+    # ---- 后台线程同步（不阻塞 UI）：用户信息 + 其他数据 + 静默版本检查 ----
+    if config.sync_auto_pull and "--skip-sync" not in args:
+        from PyQt5.QtCore import QThread
+        sync_thread = QThread()
+        sync_worker = SyncWorker()
+        sync_worker.moveToThread(sync_thread)
+        sync_thread.started.connect(sync_worker.run)
+        sync_worker.finished.connect(finalize_sync)
+        sync_worker.finished.connect(sync_thread.quit)
+        sync_thread.finished.connect(sync_worker.deleteLater)
+        sync_thread.start()
+    else:
+        # 跳过同步：使用本地缓存，直接视为同步成功
+        finalize_sync({"success": True, "sync_errors": [], "preflight": None})
+
+    # ---- 登录（必须等待同步成功；同步期间按钮禁用） ----
+    if login.exec_() != LoginWindow.Accepted:
+        window._shutdown()
+        sys.exit(0)
+    login_username = login.username()
+    login_password = login.password()
 
     # ---- 登录成功后：如需更新，把登录界面换成更新界面 ----
-    if preflight.get("needs") and update_mgr is not None:
-        from update_manager import UpdateDialog, _run_download
-        changelog = update_mgr._latest_data.get("changelog", "")
+    preflight = sync_result.get("preflight")
+    if preflight and preflight.get("needs"):
+        from update_manager import UpdateManager, UpdateDialog, _run_download
+        update_mgr = UpdateManager(config)
+        update_mgr._latest_data = preflight.get("latest_data", {})
+        changelog = preflight.get("latest_data", {}).get("changelog", "")
         dlg = UpdateDialog(preflight["latest"], preflight["current"], changelog)
         dlg.exec_()
         if dlg._result == "install":
