@@ -10,3 +10,5 @@ local_state.json
 .venv/
 venv/
 *.spec.bak
+test_old/
+test_release/

@@ -14,7 +14,7 @@ from PyQt5.QtGui import (
 from PyQt5.QtWidgets import (
     QDialog, QLineEdit, QCheckBox, QPushButton,
     QLabel, QVBoxLayout, QHBoxLayout, QGraphicsDropShadowEffect,
-    QApplication
+    QApplication, QProgressBar
 )
 from PyQt5.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from app_config import ConfigManager, verify_password, hash_password
@@ -69,6 +69,8 @@ class LoginWindow(QDialog):
     """登录前置窗口"""
 
     retry_sync = pyqtSignal()
+    login_ok = pyqtSignal(str, str)   # username, password
+    update_action = pyqtSignal(str)   # "start" / "close"
 
     def __init__(self, config: ConfigManager, parent=None):
         super().__init__(parent)
@@ -94,6 +96,8 @@ class LoginWindow(QDialog):
         self._sync_ready = False
         self._sync_status = "正在同步用户信息，请稍候…"
         self._page = "login"   # "login" 或 "register"
+        self._update_panel_visible = False
+        self._update_active = False   # 正在下载/安装中
         self._hold_ticks = 0   # 提示保持全亮的时间（50ms 一帧）
 
         self._setup_ui()
@@ -198,7 +202,7 @@ class LoginWindow(QDialog):
         self.close_btn.setGeometry(378, 11, 34, 34)
         self.close_btn.setCursor(Qt.PointingHandCursor)
         self.close_btn.setFocusPolicy(Qt.NoFocus)
-        self.close_btn.clicked.connect(self.reject)
+        self.close_btn.clicked.connect(self._on_close_clicked)
 
         # 刷新按钮（同步失败时出现，点击重试后台同步）
         self.refresh_btn = QPushButton("↻", self)
@@ -208,6 +212,45 @@ class LoginWindow(QDialog):
         self.refresh_btn.setToolTip("重新同步")
         self.refresh_btn.clicked.connect(lambda: self.retry_sync.emit())
         self.refresh_btn.setVisible(False)
+
+        # ---- 更新面板（登录成功发现新版本时，替换登录表单显示在同一窗口）----
+        self.upd_title = QLabel("发现新版本", self)
+        self.upd_title.setAlignment(Qt.AlignCenter)
+        self.upd_title.setGeometry(0, 165, 420, 34)
+
+        self.upd_version = QLabel("", self)
+        self.upd_version.setAlignment(Qt.AlignCenter)
+        self.upd_version.setGeometry(0, 205, 420, 26)
+
+        self.upd_changelog = QLabel("", self)
+        self.upd_changelog.setAlignment(Qt.AlignCenter)
+        self.upd_changelog.setWordWrap(True)
+        self.upd_changelog.setGeometry(60, 238, 300, 60)
+
+        self.update_btn = QPushButton("立即更新", self)
+        self.update_btn.setGeometry(70, 315, 280, 44)
+        self.update_btn.setCursor(Qt.PointingHandCursor)
+        self.update_btn.setFocusPolicy(Qt.NoFocus)
+        self.update_btn.clicked.connect(lambda: self.update_action.emit("start"))
+        self._add_shadow(self.update_btn)
+
+        self.upd_progress = QProgressBar(self)
+        self.upd_progress.setGeometry(70, 375, 280, 16)
+        self.upd_progress.setRange(0, 100)
+        self.upd_progress.setValue(0)
+        self.upd_progress.setTextVisible(True)
+
+        self.upd_status = QLabel("", self)
+        self.upd_status.setAlignment(Qt.AlignCenter)
+        self.upd_status.setGeometry(60, 400, 300, 30)
+
+        self.cancel_update_btn = QPushButton("取消下载", self)
+        self.cancel_update_btn.setGeometry(70, 435, 280, 30)
+        self.cancel_update_btn.setCursor(Qt.PointingHandCursor)
+        self.cancel_update_btn.setFocusPolicy(Qt.NoFocus)
+        self.cancel_update_btn.clicked.connect(lambda: self.update_action.emit("cancel"))
+
+        self._hide_update_panel()
 
     # ── 阴影效果 ────────────────────────────────────────
 
@@ -398,6 +441,105 @@ class LoginWindow(QDialog):
             }}
             QPushButton:pressed {{
                 background: rgba(220, 90, 140, 255);
+            }}
+        """)
+
+        self.upd_title.setStyleSheet(f"""
+            QLabel {{
+                color: {ACCENT_PINK.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 20px;
+                font-weight: bold;
+                background: transparent;
+            }}
+        """)
+
+        self.upd_version.setStyleSheet(f"""
+            QLabel {{
+                color: {TEXT_LIGHT.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 14px;
+                background: transparent;
+            }}
+        """)
+
+        self.upd_changelog.setStyleSheet(f"""
+            QLabel {{
+                color: {TEXT_MUTED.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 12px;
+                background: transparent;
+            }}
+        """)
+
+        self.update_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: white;
+                font-family: "Microsoft YaHei";
+                font-size: 17px;
+                font-weight: bold;
+                border: none;
+                border-radius: 22px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {BTN_GRAD_TOP.name()},
+                    stop:1 {BTN_GRAD_BOT.name()});
+            }}
+            QPushButton:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(240,100,150,255),
+                    stop:1 rgba(180,50,90,255));
+            }}
+            QPushButton:pressed {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(180,50,90,255),
+                    stop:1 rgba(130,20,50,255));
+            }}
+            QPushButton:disabled {{
+                color: rgba(255, 240, 245, 160);
+                background: rgba(120, 80, 140, 120);
+            }}
+        """)
+
+        self.upd_progress.setStyleSheet(f"""
+            QProgressBar {{
+                border: 1px solid {INPUT_BORDER.name()};
+                border-radius: 8px;
+                background: rgba(30, 15, 50, 200);
+                color: {TEXT_LIGHT.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 10px;
+                text-align: center;
+            }}
+            QProgressBar::chunk {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {BTN_GRAD_BOT.name()},
+                    stop:1 {ACCENT_PINK.name()});
+                border-radius: 7px;
+            }}
+        """)
+
+        self.upd_status.setStyleSheet(f"""
+            QLabel {{
+                color: {TEXT_MUTED.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 12px;
+                background: transparent;
+            }}
+        """)
+
+        self.cancel_update_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: {TEXT_MUTED.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 13px;
+                border: 1.5px solid rgba(120, 80, 140, 160);
+                border-radius: 15px;
+                background: rgba(30, 15, 50, 140);
+            }}
+            QPushButton:hover {{
+                color: {ACCENT_PINK.name()};
+                border-color: {ACCENT_PINK.name()};
+                background: rgba(60, 30, 80, 160);
             }}
         """)
 
@@ -697,11 +839,14 @@ class LoginWindow(QDialog):
 
     def _on_login_success(self, username):
         """登录成功"""
+        if self._auth_result:
+            return
         self._auth_result = True
         self._login_username = username
         self._login_password = self.password_input.text()
+        self.login_btn.setEnabled(False)
         self.config.save_remember_me(username, self.remember_check.isChecked())
-        self.accept()
+        self.login_ok.emit(username, self.password())
 
     def username(self):
         """最近一次登录成功的用户名"""
@@ -749,14 +894,116 @@ class LoginWindow(QDialog):
         """)
         self.error_label.setVisible(True)
 
+    # ---- 更新面板（登录成功后，发现新版本时替换登录表单显示）----
+
+    def _on_close_clicked(self):
+        """右上角关闭按钮：更新面板中发出 update_action，否则直接关闭窗口"""
+        if self._update_panel_visible:
+            self.update_action.emit("close")
+        else:
+            self.reject()
+
+    def _hide_update_panel(self):
+        for w in (self.upd_title, self.upd_version, self.upd_changelog,
+                  self.update_btn, self.upd_progress, self.upd_status,
+                  self.cancel_update_btn):
+            w.setVisible(False)
+
+    def show_update_panel(self, latest, current, changelog=""):
+        """把登录窗口切换为更新界面：显示新版本信息与更新按钮"""
+        self._update_panel_visible = True
+        self._page = "update"
+        self.title_label.setText("♡ Commemorate ♡")
+        self.subtitle_label.setVisible(False)
+        self.divider_label.setVisible(False)
+        self.username_input.setVisible(False)
+        self.password_input.setVisible(False)
+        self.confirm_input.setVisible(False)
+        self.remember_check.setVisible(False)
+        self.login_btn.setVisible(False)
+        self.register_btn.setVisible(False)
+        self.back_btn.setVisible(False)
+        self.error_label.setVisible(False)
+        self._error_timer.stop()
+
+        self.upd_title.setText("发现新版本")
+        self.upd_version.setText(f"v{current}  →  v{latest}")
+        text = (changelog or "").strip()
+        self.upd_changelog.setText(text if text else "有新版本可用，点击下方按钮开始更新。")
+        self.upd_progress.setValue(0)
+        self.upd_status.setText("")
+        self.update_btn.setEnabled(True)
+        self.update_btn.setText("立即更新")
+        self.cancel_update_btn.setVisible(False)
+        self.upd_title.setVisible(True)
+        self.upd_version.setVisible(True)
+        self.upd_changelog.setVisible(True)
+        self.update_btn.setVisible(True)
+        self._update_active = False
+
+    def set_update_state(self, state, data=None):
+        """更新流程状态：start / downloading / error / installing"""
+        data = data or {}
+        if state == "start":
+            self._update_active = True
+            self.update_btn.setEnabled(False)
+            self.update_btn.setText("更新中...")
+            self.upd_progress.setValue(0)
+            self.upd_progress.setVisible(True)
+            self.cancel_update_btn.setVisible(True)
+            self.upd_status.setText("正在下载更新包...")
+            self.upd_status.setStyleSheet(f"""
+                QLabel {{
+                    color: {TEXT_MUTED.name()};
+                    font-family: "Microsoft YaHei";
+                    font-size: 12px;
+                    background: transparent;
+                }}
+            """)
+        elif state == "downloading":
+            pct = int(data.get("percent", 0) or 0)
+            self.upd_progress.setValue(pct)
+            self.upd_status.setText(f"正在下载更新包... {pct}%")
+        elif state == "error":
+            self._update_active = False
+            self.update_btn.setEnabled(True)
+            self.update_btn.setText("重试更新")
+            self.upd_progress.setVisible(False)
+            self.cancel_update_btn.setVisible(False)
+            self.upd_status.setText(str(data.get("message", "更新失败，请重试")))
+            self.upd_status.setStyleSheet(f"""
+                QLabel {{
+                    color: {ERROR_COLOR.name()};
+                    font-family: "Microsoft YaHei";
+                    font-size: 12px;
+                    background: transparent;
+                }}
+            """)
+        elif state == "installing":
+            self._update_active = True
+            self.update_btn.setEnabled(False)
+            self.update_btn.setText("更新完成")
+            self.upd_progress.setVisible(False)
+            self.cancel_update_btn.setVisible(False)
+            self.upd_status.setText("更新完成，正在重启...")
+            self.upd_status.setStyleSheet(f"""
+                QLabel {{
+                    color: {ACCENT_PINK.name()};
+                    font-family: "Microsoft YaHei";
+                    font-size: 12px;
+                    background: transparent;
+                }}
+            """)
+
     # ── 鼠标事件（拖拽窗口 & 关闭按钮）──────────────────
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            # 点击输入框之外的区域：取消输入框焦点
-            self.username_input.clearFocus()
-            self.password_input.clearFocus()
-            self.confirm_input.clearFocus()
+            if not self._update_panel_visible:
+                # 点击输入框之外的区域：取消输入框焦点
+                self.username_input.clearFocus()
+                self.password_input.clearFocus()
+                self.confirm_input.clearFocus()
             self._drag_start = event.globalPos() - self.frameGeometry().topLeft()
 
     def mouseMoveEvent(self, event):
@@ -765,6 +1012,9 @@ class LoginWindow(QDialog):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
-            self.reject()
+            if self._update_panel_visible:
+                self.update_action.emit("close")
+            else:
+                self.reject()
         else:
             super().keyPressEvent(event)

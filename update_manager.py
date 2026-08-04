@@ -99,11 +99,7 @@ class UpdateManager(QObject):
                 latest = data.get("version") or data.get("latest_version") or "0.0.0"
                 current = self.config.app_version
 
-                # 检查是否跳过了此版本
-                skip = self.config.update_skip_version
                 needs = is_newer(latest, current)
-                if skip and version_tuple(latest) <= version_tuple(skip):
-                    needs = False
 
                 self._latest_data = data
                 self.check_completed.emit(latest, current, needs)
@@ -398,10 +394,6 @@ def show_update_dialog(update_mgr: UpdateManager, config: ConfigManager) -> str:
 
         if dlg._result == "install":
             _run_download(update_mgr, action)
-        # 如果是 skip，设置并退出
-        if action[0] == "skip":
-            config.update_skip_version = latest
-            config.save()
         loop.quit()
 
     def on_error(msg):

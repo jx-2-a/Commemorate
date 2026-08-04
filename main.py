@@ -13,7 +13,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from PyQt5.QtCore import Qt, QTimer, QPointF, QRectF
+from PyQt5.QtCore import Qt, QTimer, QPointF, QRectF, QEventLoop
 from PyQt5.QtGui import (
     QPainter, QColor, QFont, QRadialGradient, QLinearGradient,
     QPen, QBrush, QPainterPath, QFontMetrics
@@ -461,6 +461,93 @@ if __name__ == "__main__":
     # 刷新按钮：同步失败后可一键重试
     login.retry_sync.connect(start_sync_thread)
 
+    # ---- 登录成功：若发现新版本，登录窗口内完成更新流程（不进入主窗口）----
+    def on_login_ok(username, password):
+        preflight = sync_result.get("preflight") or {}
+        if not preflight.get("needs"):
+            login.accept()
+            return
+
+        from update_manager import UpdateManager
+        latest_data = preflight.get("latest_data", {})
+        update_mgr = UpdateManager(config)
+        update_mgr._latest_data = latest_data
+
+        login.show_update_panel(
+            preflight.get("latest", ""),
+            preflight.get("current", ""),
+            latest_data.get("changelog", ""),
+        )
+
+        # 等待用户操作：start（立即更新）/ cancel（取消下载后重试）/ close（关闭退出）
+        while True:
+            action = ["close"]
+            wait_loop = QEventLoop()
+
+            def on_update_action(act):
+                action[0] = act
+                wait_loop.quit()
+
+            login.update_action.connect(on_update_action)
+            wait_loop.exec_()
+            login.update_action.disconnect(on_update_action)
+
+            if action[0] != "start":
+                login.reject()
+                stop_sync_thread()
+                window._shutdown()
+                sys.exit(0)
+
+            # 用户点击“立即更新”：在登录窗口内下载并显示进度
+            done = {"ok": False}
+            dl_loop = QEventLoop()
+
+            def on_download_progress(pct):
+                login.set_update_state("downloading", {"percent": pct})
+
+            def on_download_finished(filepath):
+                if config.is_dev_mode():
+                    login.set_update_state("error", {"message": "开发模式不支持自动更新，请用 git pull 拉取最新代码"})
+                else:
+                    login.set_update_state("installing")
+                    update_mgr.schedule_update(filepath)
+                    done["ok"] = True
+                dl_loop.quit()
+
+            def on_download_error(msg):
+                login.set_update_state("error", {"message": msg})
+                dl_loop.quit()
+
+            def on_download_cancel():
+                update_mgr.cancel_download()
+                login.set_update_state("error", {"message": "已取消下载"})
+
+            login.cancel_update_btn.clicked.connect(on_download_cancel)
+            update_mgr.download_progress.connect(on_download_progress)
+            update_mgr.download_finished.connect(on_download_finished)
+            update_mgr.error_occurred.connect(on_download_error)
+
+            login.set_update_state("start")
+            update_mgr.download_update()
+            dl_loop.exec_()
+
+            update_mgr.download_progress.disconnect(on_download_progress)
+            update_mgr.download_finished.disconnect(on_download_finished)
+            update_mgr.error_occurred.disconnect(on_download_error)
+            login.cancel_update_btn.clicked.disconnect(on_download_cancel)
+
+            if done["ok"]:
+                # 更新已安排：把本地版本号同步为新版本，重启后不再重复提示
+                config.app_version = preflight["latest"]
+                config.save()
+                login.accept()
+                stop_sync_thread()
+                window._shutdown()
+                sys.exit(0)
+            # 失败/取消：面板显示错误，用户可点击“重试更新”或关闭退出
+
+    login.login_ok.connect(on_login_ok)
+
     # ---- 后台线程同步（不阻塞 UI） ----
     if config.sync_auto_pull and "--skip-sync" not in args:
         start_sync_thread()
@@ -473,29 +560,6 @@ if __name__ == "__main__":
         stop_sync_thread()
         window._shutdown()
         sys.exit(0)
-
-    # ---- 登录成功后：如需更新，把登录界面换成更新界面 ----
-    preflight = sync_result.get("preflight")
-    if preflight and preflight.get("needs"):
-        from update_manager import UpdateManager, UpdateDialog, _run_download
-        update_mgr = UpdateManager(config)
-        update_mgr._latest_data = preflight.get("latest_data", {})
-        changelog = preflight.get("latest_data", {}).get("changelog", "")
-        dlg = UpdateDialog(preflight["latest"], preflight["current"], changelog)
-        dlg.exec_()
-        if dlg._result == "install":
-            action = ["skip"]
-            _run_download(update_mgr, action)
-            if action[0] == "install":
-                # 更新已安排：把本地版本号同步为新版本，重启后不再重复提示
-                config.app_version = preflight["latest"]
-                config.save()
-                stop_sync_thread()
-                window._shutdown()
-                sys.exit(0)
-        else:
-            config.update_skip_version = preflight["latest"]
-            config.save()
 
     # ---- 主窗口正式显示 ----
     window.refresh_from_config()
