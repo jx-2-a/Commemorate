@@ -33,7 +33,20 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path Release | Out-Null
           Compress-Archive -Path dist\Commemorate.exe -DestinationPath Release\app.zip -Force
-          gh release create "${{ github.ref_name }}" Release/app.zip --generate-notes
+          $headers = @{ Authorization = "token $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
+          $repo = "${{ github.repository }}"
+          $tag = "${{ github.ref_name }}"
+          $body = @{ tag_name = $tag; name = $tag; body = "自动发布 $tag" } | ConvertTo-Json
+          try {
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases" -Method Post -Headers $headers -Body $body -ContentType "application/json"
+          } catch {
+            $existing = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/$tag" -Headers $headers
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/$($existing.id)" -Method Patch -Headers $headers -Body $body -ContentType "application/json"
+          }
+          $uploadUrl = $release.upload_url -replace '\{\?name,label\}', '?name=app.zip'
+          Invoke-RestMethod -Uri $uploadUrl -Method Post -Headers $headers -InFile "Release\app.zip" -ContentType "application/zip" | Out-Null
+          $hash = (Get-FileHash -Algorithm SHA256 "Release\app.zip").Hash.ToLower()
+          Write-Output "release_url=$($release.html_url) sha256=$hash"
 
       - name: Update version.json in data repo
         shell: pwsh
