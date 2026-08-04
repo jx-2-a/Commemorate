@@ -576,7 +576,7 @@ class LoginWindow(QDialog):
             color = TEXT_MUTED
             self.refresh_btn.setVisible(False)
         else:  # failed
-            self._sync_status = "用户信息同步失败，请检查网络后重新启动应用"
+            self._sync_status = "用户信息同步失败，请检查网络后点击刷新重试"
             color = ERROR_COLOR
             self.refresh_btn.setVisible(True)
         self.error_label.setText(self._sync_status)
