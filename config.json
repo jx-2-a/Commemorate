@@ -2,7 +2,7 @@
     "app": {
         "version": "1.0.0",
         "name": "Commemorate",
-        "build_date": "2025-08-04"
+        "build_date": "2026-08-04"
     },
     "update": {
         "check_url": "",
@@ -47,7 +47,7 @@
         "subtitle": "是我一生中最美丽的意外"
     },
     "remembered": {
-        "username": "",
-        "remember_me": false
+        "username": "admin",
+        "remember_me": true
     }
 }

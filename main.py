@@ -5,10 +5,13 @@
 
 启动流程: 登录 → 版本检查 → 主窗口
 """
+import os
 import sys
 import math
 import random
+import traceback
 from datetime import datetime
+from pathlib import Path
 
 from PyQt5.QtCore import Qt, QTimer, QPointF, QRectF
 from PyQt5.QtGui import (
@@ -18,6 +21,36 @@ from PyQt5.QtGui import (
 from PyQt5.QtWidgets import QApplication, QWidget
 
 from app_config import ConfigManager
+
+
+# ============================================================
+#  崩溃日志工具
+# ============================================================
+
+def _log_dir() -> Path:
+    """可执行文件 / 脚本所在目录（日志放在这里）"""
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent
+
+
+def _write_crash_log(etype, value, tb):
+    """把完整异常堆栈追加写入 commemorate.log"""
+    try:
+        path = _log_dir() / "commemorate.log"
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"\n===== {datetime.now():%Y-%m-%d %H:%M:%S} =====\n")
+            traceback.print_exception(etype, value, tb, file=f)
+    except Exception:
+        pass
+
+
+def _install_excepthook():
+    """未捕获异常同时写入日志并打印到控制台"""
+    def hook(etype, value, tb):
+        _write_crash_log(etype, value, tb)
+        traceback.print_exception(etype, value, tb)
+    sys.excepthook = hook
 
 
 # ============================================================
@@ -151,16 +184,23 @@ class CommemorateWindow(QWidget):
         self.time_displayed = True
 
     def _tick(self):
-        self.frame += 1
-        if self.fade_in < 1.0:
-            self.fade_in = min(1.0, self.fade_in + 0.008)
-        for s in self.stars:
-            s.update(self.frame)
-        for h in self.hearts:
-            h.update(self.frame, self.win_w, self.win_h)
-        for f in self.fireflies:
-            f.update(self.frame, self.win_w, self.win_h)
-        self.update()
+        try:
+            self.frame += 1
+            if self.fade_in < 1.0:
+                self.fade_in = min(1.0, self.fade_in + 0.008)
+            for s in self.stars:
+                s.update(self.frame)
+            for h in self.hearts:
+                h.update(self.frame, self.win_w, self.win_h)
+            for f in self.fireflies:
+                f.update(self.frame, self.win_w, self.win_h)
+            self.update()
+        except Exception:
+            # 动画循环不允许崩溃：记录一次完整堆栈后继续
+            if not getattr(self, "_tick_error_logged", False):
+                self._tick_error_logged = True
+                _write_crash_log(*sys.exc_info())
+                traceback.print_exc()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -286,7 +326,7 @@ class CommemorateWindow(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Escape, Qt.Key_Q):
-            self.close()
+            self._shutdown()
         elif event.key() == Qt.Key_F:
             if self.windowState() & Qt.WindowFullScreen:
                 self.showNormal()
@@ -294,6 +334,15 @@ class CommemorateWindow(QWidget):
                 self.showFullScreen()
 
     def mouseDoubleClickEvent(self, event):
+        self._shutdown()
+
+    def closeEvent(self, event):
+        # 关闭前停止动画定时器，避免窗口销毁后 _tick 继续访问已删除对象
+        self.timer.stop()
+        super().closeEvent(event)
+
+    def _shutdown(self):
+        self.timer.stop()
         self.close()
 
 
@@ -302,6 +351,11 @@ class CommemorateWindow(QWidget):
 # ============================================================
 
 if __name__ == "__main__":
+    # 静音 Qt 网络监控的无害警告（Windows 虚拟网卡 / VPN 环境常见）
+    os.environ.setdefault("QT_LOGGING_RULES", "qt.network.monitor=false")
+
+    _install_excepthook()
+
     app = QApplication(sys.argv)
     app.setApplicationName("Commemorate")
 
