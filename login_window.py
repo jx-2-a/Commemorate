@@ -6,7 +6,7 @@ import sys
 import math
 import json
 
-from PyQt5.QtCore import Qt, QTimer, QPointF, QPropertyAnimation, QEasingCurve, pyqtProperty, QUrl
+from PyQt5.QtCore import Qt, QTimer, QPointF, QPropertyAnimation, QEasingCurve, pyqtProperty, pyqtSignal, QUrl
 from PyQt5.QtGui import (
     QPainter, QColor, QFont, QRadialGradient, QLinearGradient,
     QPen, QBrush, QPainterPath, QFontMetrics, QIcon, QPixmap
@@ -67,6 +67,8 @@ class ShakeableLineEdit(QLineEdit):
 
 class LoginWindow(QDialog):
     """登录前置窗口"""
+
+    retry_sync = pyqtSignal()
 
     def __init__(self, config: ConfigManager, parent=None):
         super().__init__(parent)
@@ -176,6 +178,14 @@ class LoginWindow(QDialog):
         self.close_btn.setGeometry(380, 12, 30, 30)
         self.close_btn.setCursor(Qt.PointingHandCursor)
         self.close_btn.clicked.connect(self.reject)
+
+        # 刷新按钮（同步失败时出现，点击重试后台同步）
+        self.refresh_btn = QPushButton("↻", self)
+        self.refresh_btn.setGeometry(340, 12, 30, 30)
+        self.refresh_btn.setCursor(Qt.PointingHandCursor)
+        self.refresh_btn.setToolTip("重新同步")
+        self.refresh_btn.clicked.connect(lambda: self.retry_sync.emit())
+        self.refresh_btn.setVisible(False)
 
     # ── 阴影效果 ────────────────────────────────────────
 
@@ -324,6 +334,25 @@ class LoginWindow(QDialog):
             }}
             QPushButton:pressed {{
                 background: rgba(190, 40, 60, 255);
+            }}
+        """)
+
+        self.refresh_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: rgba(200, 180, 210, 140);
+                font-family: "Microsoft YaHei";
+                font-size: 17px;
+                font-weight: bold;
+                border: none;
+                border-radius: 15px;
+                background: transparent;
+            }}
+            QPushButton:hover {{
+                color: white;
+                background: rgba(255, 140, 180, 210);
+            }}
+            QPushButton:pressed {{
+                background: rgba(220, 90, 140, 255);
             }}
         """)
 
@@ -528,6 +557,7 @@ class LoginWindow(QDialog):
             self.login_btn.setEnabled(True)
             self.register_btn.setEnabled(True)
             self.error_label.setVisible(False)
+            self.refresh_btn.setVisible(False)
             return
 
         self._sync_ready = False
@@ -536,9 +566,11 @@ class LoginWindow(QDialog):
         if state == "syncing":
             self._sync_status = "正在同步用户信息，请稍候…"
             color = TEXT_MUTED
+            self.refresh_btn.setVisible(False)
         else:  # failed
             self._sync_status = "用户信息同步失败，请检查网络后重新启动应用"
             color = ERROR_COLOR
+            self.refresh_btn.setVisible(True)
         self.error_label.setText(self._sync_status)
         self.error_label.setStyleSheet(f"""
             QLabel {{

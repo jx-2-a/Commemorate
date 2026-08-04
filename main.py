@@ -406,9 +406,11 @@ if __name__ == "__main__":
 
     login = LoginWindow(config)
     login.update_sync_state("syncing")
+    sync_running = {"value": False}
 
     def finalize_sync(result):
         """同步线程结束：成功则重载配置并解锁登录，失败则阻止登录"""
+        sync_running["value"] = False
         sync_result.update(result)
         if not result.get("success"):
             login.update_sync_state("failed")
@@ -426,17 +428,28 @@ if __name__ == "__main__":
                 return
         login.update_sync_state("ready")
 
-    # ---- 后台线程同步（不阻塞 UI）：用户信息 + 其他数据 + 静默版本检查 ----
-    if config.sync_auto_pull and "--skip-sync" not in args:
+    def start_sync_thread():
+        """启动后台同步线程（不阻塞 UI）：用户信息 + 其他数据 + 静默版本检查"""
+        if sync_running["value"]:
+            return
+        sync_running["value"] = True
+        login.update_sync_state("syncing")
         from PyQt5.QtCore import QThread
-        sync_thread = QThread()
-        sync_worker = SyncWorker()
-        sync_worker.moveToThread(sync_thread)
-        sync_thread.started.connect(sync_worker.run)
-        sync_worker.finished.connect(finalize_sync)
-        sync_worker.finished.connect(sync_thread.quit)
-        sync_thread.finished.connect(sync_worker.deleteLater)
-        sync_thread.start()
+        t = QThread()
+        w = SyncWorker()
+        w.moveToThread(t)
+        t.started.connect(w.run)
+        w.finished.connect(finalize_sync)
+        w.finished.connect(t.quit)
+        t.finished.connect(w.deleteLater)
+        t.start()
+
+    # 刷新按钮：同步失败后可一键重试
+    login.retry_sync.connect(start_sync_thread)
+
+    # ---- 后台线程同步（不阻塞 UI） ----
+    if config.sync_auto_pull and "--skip-sync" not in args:
+        start_sync_thread()
     else:
         # 跳过同步：使用本地缓存，直接视为同步成功
         finalize_sync({"success": True, "sync_errors": [], "preflight": None})
