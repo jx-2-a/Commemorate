@@ -19,7 +19,7 @@ GitHub 私有仓库 my-app-data（配置与数据）
 
 更新链路：应用启动 → 读取私有仓库 `version.json` → 有新版则从公开仓库的 GitHub Releases 下载 `app.zip`（地址按版本号寻址，如 `releases/download/v1.1.0/app.zip`）→ 校验 SHA-256 → 解压 → `updater.bat` 替换 exe 并重启。
 
-数据同步链路：应用登录后 → 从私有仓库拉取 4 个文件到本地 `data/` 目录 → `config.json` 作为远程配置叠加生效；`data.csv` / `rules.txt` 可通过 `--sync-push` 推回仓库。
+启动流程：登录前先同步用户信息与其他数据（拉取到本地 `data/`，`config.json` 作为远程配置叠加生效）并静默完成版本检查 → 显示登录窗口（更新重启后会自动登录）→ 登录成功 → 如需更新则切换为更新界面，更新完成后自动重启并自动登录进入主窗口；`data.csv` / `rules.txt` 可通过 `--sync-push` 推回仓库。
 
 同步采用哈希对比：拉取时先通过一次 GitHub API 获取远程文件哈希清单（git blob SHA），与本地逐一对比，仅下载有变化的文件；推送时本地与远程哈希一致也会直接跳过，避免浪费网络。
 

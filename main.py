@@ -395,33 +395,68 @@ if __name__ == "__main__":
         QMessageBox.information(None, "数据同步", msg)
         sys.exit(0)
 
-    # ---- 后台预创建主窗口（先不显示），启动后只有登录窗口 ----
-    window = CommemorateWindow(config)
-
-    # ---- 登录阶段（工具窗口） ----
-    from login_window import LoginWindow
-    login = LoginWindow(config)
-    if login.exec_() != LoginWindow.Accepted:
-        window._shutdown()
-        sys.exit(0)
-
-    # ---- 数据同步（私有仓库 → 本地 data/） ----
+    # ---- 登录前：同步用户信息与其他数据（哈希对比，仅下载有变化的文件） ----
     if config.sync_auto_pull and "--skip-sync" not in args:
         from data_sync import DataSyncManager, run_sync
         sync_mgr = DataSyncManager(config)
         run_sync(sync_mgr, "pull", show_progress=True)
-        window.refresh_from_config()
+        config.reload()  # 重新加载远程配置（用户列表 / 纪念信息）
 
-    # ---- 更新检查阶段 ----
+    # ---- 登录前：静默版本检查（与数据同步同时完成） ----
+    update_mgr = None
+    preflight = {}
     if config.update_auto_check and config.update_check_url:
-        from update_manager import UpdateManager, show_update_dialog
+        from update_manager import UpdateManager, preflight_update
         update_mgr = UpdateManager(config)
-        action = show_update_dialog(update_mgr, config)
-        if action == "install":
+        preflight = preflight_update(update_mgr, config)
+
+    # ---- 后台预创建主窗口（先不显示），启动后只有登录窗口 ----
+    window = CommemorateWindow(config)
+
+    # ---- 登录阶段：更新重启后自动登录；否则显示登录窗口 ----
+    from login_window import LoginWindow
+    pending_user, pending_pass = config.take_pending_auto_login()
+    login_username, login_password = "", ""
+    auto_login_ok = False
+
+    if pending_user and config.auth_mode == "local":
+        from app_config import verify_password
+        for u in config.all_users():
+            if u.get("username") == pending_user and verify_password(
+                pending_pass, u.get("password_hash", "")
+            ):
+                login_username, login_password = pending_user, pending_pass
+                auto_login_ok = True
+                break
+
+    if not auto_login_ok:
+        login = LoginWindow(config)
+        if login.exec_() != LoginWindow.Accepted:
             window._shutdown()
-            sys.exit(0)  # 已安排更新，退出
+            sys.exit(0)
+        login_username = login.username()
+        login_password = login.password()
+
+    # ---- 登录成功后：如需更新，把登录界面换成更新界面 ----
+    if preflight.get("needs") and update_mgr is not None:
+        from update_manager import UpdateDialog, _run_download
+        changelog = update_mgr._latest_data.get("changelog", "")
+        dlg = UpdateDialog(preflight["latest"], preflight["current"], changelog)
+        dlg.exec_()
+        if dlg._result == "install":
+            action = ["skip"]
+            _run_download(update_mgr, action)
+            if action[0] == "install":
+                # 保留登录信息：重启后自动登录，直接进入主窗口
+                config.set_pending_auto_login(login_username, login_password)
+                window._shutdown()
+                sys.exit(0)
+        else:
+            config.update_skip_version = preflight["latest"]
+            config.save()
 
     # ---- 主窗口正式显示 ----
+    window.refresh_from_config()
     window.show()
     window.raise_()
     sys.exit(app.exec_())

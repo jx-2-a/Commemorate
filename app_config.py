@@ -17,7 +17,6 @@ class ConfigManager:
         self._data = {}
         self._local_state = {}
         self._load()
-        self._load_local_state()
 
     # ---------- 路径 ----------
 
@@ -51,6 +50,10 @@ class ConfigManager:
     # ---------- 读写 ----------
 
     def _load(self):
+        self._load_data()
+        self._load_local_state()
+
+    def _load_data(self):
         self._data = self._defaults()
         if self._config_path.exists():
             with open(self._config_path, "r", encoding="utf-8") as f:
@@ -69,6 +72,10 @@ class ConfigManager:
             except Exception:
                 # 远程配置损坏时忽略，继续使用本地配置
                 pass
+
+    def reload(self):
+        """同步完成后重新读取配置（用户 / 纪念信息可能已更新）"""
+        self._load_data()
 
     def _load_local_state(self):
         if self.local_state_path.exists():
@@ -293,6 +300,20 @@ class ConfigManager:
         self.remembered_username = username if checked else ""
         self.remember_me = checked
         self.save_local_state()
+
+    def set_pending_auto_login(self, username, password):
+        """记录更新重启后的一次性自动登录信息"""
+        self._local_state["auto_login"] = {"username": username, "password": password}
+        self.save_local_state()
+
+    def take_pending_auto_login(self):
+        """取出并清除待自动登录信息，返回 (用户名, 密码) 或 (None, None)"""
+        entry = self._local_state.get("auto_login")
+        if entry:
+            self._local_state.pop("auto_login", None)
+            self.save_local_state()
+            return entry.get("username", ""), entry.get("password", "")
+        return None, None
 
 
 # ── 密码哈希工具 ───────────────────────────────────────────

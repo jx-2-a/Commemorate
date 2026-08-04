@@ -495,8 +495,18 @@ class LoginWindow(QDialog):
     def _on_login_success(self, username):
         """登录成功"""
         self._auth_result = True
+        self._login_username = username
+        self._login_password = self.password_input.text()
         self.config.save_remember_me(username, self.remember_check.isChecked())
         self.accept()
+
+    def username(self):
+        """最近一次登录成功的用户名"""
+        return getattr(self, "_login_username", "")
+
+    def password(self):
+        """最近一次登录成功的密码（用于更新重启后自动登录）"""
+        return getattr(self, "_login_password", "")
 
     # ── 鼠标事件（拖拽窗口 & 关闭按钮）──────────────────
 

@@ -475,3 +475,26 @@ def _run_download(update_mgr: UpdateManager, action: list):
 
     update_mgr.download_update()
     dl_loop.exec_()
+
+
+def preflight_update(update_mgr: UpdateManager, config: ConfigManager) -> dict:
+    """登录前静默检查版本，返回 {'needs': bool, 'latest': str, 'current': str}"""
+    result = {}
+    loop = QEventLoop()
+
+    def on_check(latest, current, needs):
+        result.update(latest=latest, current=current, needs=needs)
+        loop.quit()
+
+    def on_error(msg):
+        result["error"] = msg
+        loop.quit()
+
+    update_mgr.check_completed.connect(on_check)
+    update_mgr.error_occurred.connect(on_error)
+    update_mgr.check_for_update()
+    loop.exec_()
+
+    update_mgr.check_completed.disconnect(on_check)
+    update_mgr.error_occurred.disconnect(on_error)
+    return result
