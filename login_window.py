@@ -177,12 +177,14 @@ class LoginWindow(QDialog):
         self.close_btn = QPushButton("✕", self)
         self.close_btn.setGeometry(380, 12, 30, 30)
         self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setFocusPolicy(Qt.NoFocus)
         self.close_btn.clicked.connect(self.reject)
 
         # 刷新按钮（同步失败时出现，点击重试后台同步）
         self.refresh_btn = QPushButton("↻", self)
         self.refresh_btn.setGeometry(340, 12, 30, 30)
         self.refresh_btn.setCursor(Qt.PointingHandCursor)
+        self.refresh_btn.setFocusPolicy(Qt.NoFocus)
         self.refresh_btn.setToolTip("重新同步")
         self.refresh_btn.clicked.connect(lambda: self.retry_sync.emit())
         self.refresh_btn.setVisible(False)
@@ -691,6 +693,7 @@ class RegisterDialog(QDialog):
         self.close_btn = QPushButton("✕", self)
         self.close_btn.setGeometry(380, 12, 30, 30)
         self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setFocusPolicy(Qt.NoFocus)
         self.close_btn.clicked.connect(self.reject)
 
     def _apply_styles(self):
