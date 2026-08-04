@@ -175,14 +175,14 @@ class LoginWindow(QDialog):
 
         # 关闭按钮（右上角圆形 ×，悬停变红）
         self.close_btn = QPushButton("✕", self)
-        self.close_btn.setGeometry(380, 12, 30, 30)
+        self.close_btn.setGeometry(378, 11, 34, 34)
         self.close_btn.setCursor(Qt.PointingHandCursor)
         self.close_btn.setFocusPolicy(Qt.NoFocus)
         self.close_btn.clicked.connect(self.reject)
 
         # 刷新按钮（同步失败时出现，点击重试后台同步）
         self.refresh_btn = QPushButton("↻", self)
-        self.refresh_btn.setGeometry(340, 12, 30, 30)
+        self.refresh_btn.setGeometry(338, 11, 34, 34)
         self.refresh_btn.setCursor(Qt.PointingHandCursor)
         self.refresh_btn.setFocusPolicy(Qt.NoFocus)
         self.refresh_btn.setToolTip("重新同步")
@@ -324,10 +324,11 @@ class LoginWindow(QDialog):
             QPushButton {{
                 color: rgba(200, 180, 210, 140);
                 font-family: "Microsoft YaHei";
-                font-size: 15px;
+                font-size: 14px;
                 font-weight: bold;
                 border: none;
-                border-radius: 15px;
+                border-radius: 17px;
+                padding: 0;
                 background: transparent;
             }}
             QPushButton:hover {{
@@ -343,10 +344,11 @@ class LoginWindow(QDialog):
             QPushButton {{
                 color: rgba(200, 180, 210, 140);
                 font-family: "Microsoft YaHei";
-                font-size: 17px;
+                font-size: 16px;
                 font-weight: bold;
                 border: none;
-                border-radius: 15px;
+                border-radius: 17px;
+                padding: 0;
                 background: transparent;
             }}
             QPushButton:hover {{
@@ -694,7 +696,7 @@ class RegisterDialog(QDialog):
         self.error_label.setVisible(False)
 
         self.close_btn = QPushButton("✕", self)
-        self.close_btn.setGeometry(380, 12, 30, 30)
+        self.close_btn.setGeometry(378, 11, 34, 34)
         self.close_btn.setCursor(Qt.PointingHandCursor)
         self.close_btn.setFocusPolicy(Qt.NoFocus)
         self.close_btn.clicked.connect(self.reject)
@@ -768,10 +770,11 @@ class RegisterDialog(QDialog):
             QPushButton {{
                 color: rgba(200, 180, 210, 140);
                 font-family: "Microsoft YaHei";
-                font-size: 15px;
+                font-size: 14px;
                 font-weight: bold;
                 border: none;
-                border-radius: 15px;
+                border-radius: 17px;
+                padding: 0;
                 background: transparent;
             }}
             QPushButton:hover {{
