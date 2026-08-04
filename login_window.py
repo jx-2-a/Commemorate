@@ -446,7 +446,9 @@ class LoginWindow(QDialog):
 
     def _open_register(self):
         if not self._sync_ready:
-            self._show_error(self._sync_status)
+            # 保持同步状态提示，只抖动输入框，不触发淡出
+            self._error_timer.stop()
+            self.username_input.shake()
             return
         dlg = RegisterDialog(self.config, self)
         if dlg.exec_() == RegisterDialog.Accepted:
@@ -460,7 +462,10 @@ class LoginWindow(QDialog):
         password = self.password_input.text()
 
         if not self._sync_ready:
-            self._show_error(self._sync_status)
+            # 保持“同步中 / 同步失败”的持久提示，只抖动输入框，不触发淡出
+            self._error_timer.stop()
+            self.username_input.shake()
+            self.password_input.shake()
             return
 
         if not username or not password:
@@ -552,6 +557,7 @@ class LoginWindow(QDialog):
 
     def update_sync_state(self, state):
         """登录前同步状态：syncing / ready / failed"""
+        self._error_timer.stop()
         if state == "ready":
             self._sync_ready = True
             self.login_btn.setEnabled(True)
