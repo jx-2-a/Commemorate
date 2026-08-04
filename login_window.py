@@ -601,6 +601,9 @@ class LoginWindow(QDialog):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
+            # 点击输入框之外的区域：取消输入框焦点
+            self.username_input.clearFocus()
+            self.password_input.clearFocus()
             self._drag_start = event.globalPos() - self.frameGeometry().topLeft()
 
     def mouseMoveEvent(self, event):
@@ -871,6 +874,10 @@ class RegisterDialog(QDialog):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
+            # 点击输入框之外的区域：取消输入框焦点
+            self.username_input.clearFocus()
+            self.password_input.clearFocus()
+            self.confirm_input.clearFocus()
             self._drag_start = event.globalPos() - self.frameGeometry().topLeft()
 
     def mouseMoveEvent(self, event):
