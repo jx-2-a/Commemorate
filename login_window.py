@@ -185,7 +185,7 @@ class LoginWindow(QDialog):
         self.refresh_btn.setGeometry(338, 11, 34, 34)
         self.refresh_btn.setCursor(Qt.PointingHandCursor)
         self.refresh_btn.setFocusPolicy(Qt.NoFocus)
-        self.refresh_btn.setToolTip("重新同步")
+        # self.refresh_btn.setToolTip("重新同步")
         self.refresh_btn.clicked.connect(lambda: self.retry_sync.emit())
         self.refresh_btn.setVisible(False)
 
@@ -324,7 +324,7 @@ class LoginWindow(QDialog):
             QPushButton {{
                 color: rgba(200, 180, 210, 140);
                 font-family: "Microsoft YaHei";
-                font-size: 14px;
+                font-size: 12px;
                 font-weight: bold;
                 border: none;
                 border-radius: 17px;
@@ -344,7 +344,7 @@ class LoginWindow(QDialog):
             QPushButton {{
                 color: rgba(200, 180, 210, 140);
                 font-family: "Microsoft YaHei";
-                font-size: 16px;
+                font-size: 14px;
                 font-weight: bold;
                 border: none;
                 border-radius: 17px;
@@ -770,7 +770,7 @@ class RegisterDialog(QDialog):
             QPushButton {{
                 color: rgba(200, 180, 210, 140);
                 font-family: "Microsoft YaHei";
-                font-size: 14px;
+                font-size: 12px;
                 font-weight: bold;
                 border: none;
                 border-radius: 17px;
