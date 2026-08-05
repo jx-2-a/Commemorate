@@ -311,7 +311,72 @@ class CountdownPage:
         painter.drawPath(path)
 
 
-PAGE_CLASSES = [CountdownPage]
+class PlaceholderPage:
+    """测试用占位页面：仅显示页面名称（后续替换为真实功能页）"""
+
+    name = "Placeholder"
+
+    def __init__(self, config):
+        self.config = config
+        self.fade_in = 1.0
+
+    def resize(self, w, h):
+        pass
+
+    def refresh(self):
+        pass
+
+    def show_time(self):
+        pass
+
+    def tick(self, frame):
+        pass
+
+    def paint(self, painter, w, h):
+        bg = QLinearGradient(0, 0, 0, h)
+        bg.setColorAt(0.0, QColor(8, 4, 24))
+        bg.setColorAt(0.5, QColor(22, 10, 42))
+        bg.setColorAt(1.0, QColor(42, 18, 56))
+        painter.setBrush(QBrush(bg))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
+        painter.setFont(QFont("Microsoft YaHei", 36, QFont.Bold))
+        painter.setPen(QColor(255, 235, 245, 220))
+        fm = QFontMetrics(painter.font())
+        tw = fm.horizontalAdvance(self.name)
+        painter.drawText(int(w / 2 - tw / 2), int(h / 2), self.name)
+
+
+class GalleryPage(PlaceholderPage):
+    name = "Gallery"
+
+
+class MusicPage(PlaceholderPage):
+    name = "Music"
+
+
+class NotesPage(PlaceholderPage):
+    name = "Notes"
+
+
+class SettingsPage(PlaceholderPage):
+    name = "Settings"
+
+
+class DiaryPage(PlaceholderPage):
+    name = "Diary"
+
+
+# 页面注册表：以后新增功能页时，把页面类加进这个列表即可。
+# 目前除 Countdown 外均为测试用占位页，便于验证多页面目录。
+PAGE_CLASSES = [
+    CountdownPage,
+    GalleryPage,
+    MusicPage,
+    NotesPage,
+    SettingsPage,
+    DiaryPage,
+]
 
 
 class CommemorateWindow(QWidget):
@@ -352,6 +417,7 @@ class CommemorateWindow(QWidget):
         # 左侧页面目录（鼠标靠近时渐变浮现）
         self.sidebar_opacity = 0.0
         self.sidebar_hover = -1
+        self.sidebar_hover_alpha = 0.0
         self._drag_active = False
         self._drag_acc = 0.0
         self._drag_last_y = 0
@@ -459,6 +525,11 @@ class CommemorateWindow(QWidget):
                     if QRectF(x - 6, y - 14, 130, 28).contains(mouse_pos):
                         self.sidebar_hover = idx
                         break
+            # 悬停展开的平滑过渡（0..1）
+            if self.sidebar_hover >= 0:
+                self.sidebar_hover_alpha = min(1.0, self.sidebar_hover_alpha + 0.10)
+            else:
+                self.sidebar_hover_alpha = max(0.0, self.sidebar_hover_alpha - 0.08)
 
             self.update()
         except Exception:
@@ -495,30 +566,46 @@ class CommemorateWindow(QWidget):
             return
         alpha = int(255 * self.sidebar_opacity)
 
-        for idx, slot, x, y in self._sidebar_layout():
+        hovered = self.sidebar_hover
+        ha = self.sidebar_hover_alpha
+        items = self._sidebar_layout()
+
+        for idx, slot, x, y in items:
             current = (idx == self.current_index)
-            hover = (idx == self.sidebar_hover)
-            if current:
-                font = QFont("Microsoft YaHei", 13)
-                color = QColor(245, 245, 250, int(alpha * 0.88))
+
+            # 平滑长度：悬停项最长，两侧按高斯递减（圆滑过渡）
+            if hovered >= 0 and ha > 0.02:
+                d = abs(idx - hovered)
+                factor = math.exp(-(d * d) / (2 * 1.15 * 1.15))
             else:
-                font = QFont("Microsoft YaHei", 11)
-                color = QColor(208, 208, 218, int(alpha * 0.62))
-            if hover and not current:
-                color = QColor(235, 230, 240, int(alpha * 0.85))
-            # 左侧短竖线（类似对话消息左侧的短线样式）
-            line_color = (
-                QColor(255, 175, 210, int(alpha * 0.9))
-                if current
-                else QColor(208, 203, 218, int(alpha * 0.5))
-            )
+                factor = 0.0
+            length = 14 + 28 * factor * ha
+            if current and ha < 0.05:
+                length = max(length, 22)
+
+            # 短横线
+            if current:
+                line_color = QColor(255, 190, 220, int(alpha * 0.95))
+            else:
+                line_color = QColor(
+                    215, 210, 225, int(alpha * (0.4 + 0.45 * factor * ha))
+                )
             painter.setPen(QPen(line_color, 2))
-            painter.drawLine(QPointF(x - 12, y + 2), QPointF(x - 12, y + 18))
-            painter.setFont(font)
-            text = self.pages[idx].name
-            # 标签左对齐，短竖线在其左侧
-            painter.setPen(color)
-            painter.drawText(int(x), int(y), text)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(QPointF(x - length / 2, y), QPointF(x + length / 2, y))
+
+            # 悬停项显示页面名称（淡入淡出）
+            if hovered == idx and ha > 0.02:
+                font = QFont("Microsoft YaHei", 12)
+                painter.setFont(font)
+                fm = QFontMetrics(font)
+                text = self.pages[idx].name
+                painter.setPen(QColor(240, 238, 245, int(alpha * ha)))
+                painter.drawText(
+                    int(x + length / 2 + 10),
+                    int(y - fm.height() / 2),
+                    text,
+                )
 
     def _paint_controls(self, painter, w, h):
         if self.controls_opacity <= 0.02:
