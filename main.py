@@ -597,6 +597,7 @@ class CommemorateWindow(QWidget):
         self.pages = [cls(config) for cls in PAGE_CLASSES]
         self.current_index = 0
         self._page_fade = 1.0
+        self._trans_old = None
 
         self.setWindowTitle(f"💖 {config.app_name}")
         self.setWindowFlags(
@@ -655,10 +656,11 @@ class CommemorateWindow(QWidget):
         self._jump_to_page((self.current_index + delta) % n)
 
     def _jump_to_page(self, idx):
-        """跳转到指定页面：旧页直接消失，新页逐渐淡入"""
+        """跳转到指定页面：新页淡入盖在旧页上，完全显示后旧页消失"""
         n = len(self.pages)
         if not (0 <= idx < n) or idx == self.current_index:
             return
+        self._trans_old = self._current_page()
         self.current_index = idx
         self._page_fade = 0.0
         self._current_page().show_time()
@@ -750,9 +752,11 @@ class CommemorateWindow(QWidget):
             else:
                 self.sidebar_hover_alpha = max(0.0, self.sidebar_hover_alpha - 0.08)
 
-            # 新页面逐渐淡入（不做交叉渐变）
+            # 新页面逐渐淡入；完全显示后旧页消失
             if self._page_fade < 1.0:
                 self._page_fade = min(1.0, self._page_fade + 0.05)
+                if self._page_fade >= 1.0:
+                    self._trans_old = None
 
             # 每根短横线的长度平滑过渡（避免恢复时与当前页横线冲突闪烁）
             hovered = self.sidebar_hover
@@ -782,10 +786,15 @@ class CommemorateWindow(QWidget):
         painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         w, h = self.win_w, self.win_h
 
-        # 0. 当前页面内容（窗口背景透明，新页面逐渐淡入，不做交叉渐变）
-        painter.setOpacity(self._page_fade)
-        self._current_page().paint(painter, w, h)
-        painter.setOpacity(1.0)
+        # 0. 当前页面内容：旧页全亮，新页淡入盖在上面，完全显示后旧页消失
+        page = self._current_page()
+        if self._trans_old is not None:
+            self._trans_old.paint(painter, w, h)
+            painter.setOpacity(self._page_fade)
+            page.paint(painter, w, h)
+            painter.setOpacity(1.0)
+        else:
+            page.paint(painter, w, h)
 
         # 2. 左侧页面目录
         self._paint_sidebar(painter, w, h)
