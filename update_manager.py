@@ -70,14 +70,17 @@ def _build_updater_bat(target_exe: Path, source_exe: Path, bat_dir: Path) -> str
     def ps_quote(p: str) -> str:
         return p.replace("'", "''")
 
-    # 用 PowerShell + ProcessStartInfo 启动新 exe，确保环境变量中不残留
-    # _MEIPASS2（cmd 的 set VAR= 只是置空，PyInstaller 可能仍视为已设置）
+    # 用 PowerShell + ProcessStartInfo 启动新 exe，并彻底移除 _MEIPASS2：
+    # 新 exe 若继承旧进程的 _MEIPASS2，会往旧进程正在被清理的临时目录里解压，
+    # 导致 python311.dll 加载失败（Failed to load Python DLL）。
+    # 注意不能依赖 EnvironmentVariables.Remove：空字典时子进程仍会继承父环境，
+    # 必须先从当前进程环境里 Remove-Item 真正删掉。
     ps_starter = (
+        "Remove-Item Env:_MEIPASS2 -ErrorAction SilentlyContinue;"
         "$p=New-Object System.Diagnostics.ProcessStartInfo;"
         f"$p.FileName='{ps_quote(str(target_exe))}';"
         f"$p.WorkingDirectory='{ps_quote(str(target_exe.parent))}';"
         "$p.UseShellExecute=$false;"
-        "$p.EnvironmentVariables.Remove('_MEIPASS2');"
         "[void][System.Diagnostics.Process]::Start($p)"
     )
 
@@ -131,6 +134,7 @@ if errorlevel 1 (
 if exist "%TARGET%.old" del /f /q "%TARGET%.old" >NUL 2>&1
 echo [%date% %time%] replace ok, launching new version >> "%LOGFILE%" 2>NUL
 
+set "_MEIPASS2="
 {ps_exe} -NoProfile -ExecutionPolicy Bypass -Command "{ps_starter}"
 if errorlevel 1 (
     echo [%date% %time%] ERROR: start new version failed >> "%LOGFILE%" 2>NUL
