@@ -402,27 +402,37 @@ class CommemorateWindow(QWidget):
         )
         return (mini, maxi, close)
 
-    def _sidebar_item_positions(self):
-        """左侧页面目录位置：沿侧边成圆弧排列"""
-        w, h = self.win_w, self.win_h
+    def _sidebar_layout(self):
+        """左侧页面目录：圆环布局，最多 5 项，当前页恒在中间（slot 2）
+
+        返回 [(页面索引, slot, x, y)]；slot 0..4 对应圆环从上到下。
+        """
         n = len(self.pages)
+        if n == 0:
+            return []
+        cx = 74
+        cy = self.win_h * 0.5
+        r = 60
         out = []
-        for i in range(n):
-            t = 0.5 if n == 1 else i / (n - 1)
-            y = h * 0.18 + t * (h * 0.64)
-            x = 22 + 24 * math.sin(t * math.pi)
-            out.append((x, y))
+        for idx in range(max(0, self.current_index - 2), min(n, self.current_index + 3)):
+            slot = idx - self.current_index + 2
+            theta = math.radians(270 - slot * 45)
+            x = cx + r * math.cos(theta)
+            y = cy + r * math.sin(theta)
+            out.append((idx, slot, x, y))
         return out
 
-    def _sidebar_arc_path(self):
-        """侧边装饰圆弧（与目录项同一弧线）"""
-        w, h = self.win_w, self.win_h
+    def _sidebar_ring_path(self):
+        """圆环左侧半圆弧装饰线"""
+        cx = 74
+        cy = self.win_h * 0.5
+        r = 60
         path = QPainterPath()
         steps = 48
         for i in range(steps + 1):
-            t = i / steps
-            y = h * 0.18 + t * (h * 0.64)
-            x = 22 + 24 * math.sin(t * math.pi)
+            theta = math.radians(270 - 180 * i / steps)
+            x = cx + r * math.cos(theta)
+            y = cy + r * math.sin(theta)
             if i == 0:
                 path.moveTo(x, y)
             else:
@@ -462,9 +472,9 @@ class CommemorateWindow(QWidget):
                 self.sidebar_opacity = max(0.0, self.sidebar_opacity - 0.06)
             self.sidebar_hover = -1
             if self.sidebar_opacity > 0.2:
-                for i, (x, y) in enumerate(self._sidebar_item_positions()):
-                    if QRectF(x - 60, y - 14, 120, 28).contains(mouse_pos):
-                        self.sidebar_hover = i
+                for idx, slot, x, y in self._sidebar_layout():
+                    if QRectF(x - 6, y - 14, 130, 28).contains(mouse_pos):
+                        self.sidebar_hover = idx
                         break
 
             self.update()
@@ -502,33 +512,34 @@ class CommemorateWindow(QWidget):
             return
         alpha = int(255 * self.sidebar_opacity)
 
-        # 侧边装饰圆弧
-        arc_pen = QPen(QColor(255, 170, 210, int(alpha * 0.45)), 2)
+        # 圆环左侧半圆弧装饰线（与字体相近但略浅的颜色）
+        arc_pen = QPen(QColor(220, 210, 230, int(alpha * 0.5)), 2)
         arc_pen.setCapStyle(Qt.RoundCap)
         painter.setPen(arc_pen)
         painter.setBrush(Qt.NoBrush)
-        painter.drawPath(self._sidebar_arc_path())
+        painter.drawPath(self._sidebar_ring_path())
 
-        for i, (x, y) in enumerate(self._sidebar_item_positions()):
-            current = (i == self.current_index)
-            hover = (i == self.sidebar_hover)
+        for idx, slot, x, y in self._sidebar_layout():
+            current = (idx == self.current_index)
+            hover = (idx == self.sidebar_hover)
             if current:
                 font = QFont("Microsoft YaHei", 13)
-                color = QColor(255, 235, 245, alpha)
+                color = QColor(245, 245, 250, alpha)
             else:
                 font = QFont("Microsoft YaHei", 11)
-                color = QColor(225, 205, 235, int(alpha * 0.75))
+                color = QColor(208, 208, 218, int(alpha * 0.8))
             if hover and not current:
-                color = QColor(255, 220, 240, alpha)
+                color = QColor(235, 230, 240, alpha)
             painter.setFont(font)
-            fm = QFontMetrics(font)
-            text = self.pages[i].name
-            tw = fm.horizontalAdvance(text)
-            if current:
-                painter.setPen(QPen(QColor(255, 160, 200, alpha), 3))
-                painter.drawLine(QPointF(x - 52, y), QPointF(x - 38, y))
+            text = self.pages[idx].name
+            # 标签左侧与弧线对齐
             painter.setPen(color)
-            painter.drawText(int(x - tw / 2), int(y), text)
+            painter.drawText(int(x), int(y), text)
+            # 当前页在弧线上加一个小亮点
+            if current:
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(QColor(255, 170, 210, alpha)))
+                painter.drawEllipse(QPointF(x, y + 2), 3, 3)
 
     def _paint_controls(self, painter, w, h):
         if self.controls_opacity <= 0.02:
@@ -623,9 +634,9 @@ class CommemorateWindow(QWidget):
             pos = event.pos()
 
             if self.sidebar_opacity > 0.4:
-                for i, (x, y) in enumerate(self._sidebar_item_positions()):
-                    if QRectF(x - 60, y - 14, 120, 28).contains(pos):
-                        self.current_index = i
+                for idx, slot, x, y in self._sidebar_layout():
+                    if QRectF(x - 6, y - 14, 130, 28).contains(pos):
+                        self.current_index = idx
                         self._current_page().show_time()
                         self.update()
                         event.accept()
