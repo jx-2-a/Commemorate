@@ -754,7 +754,7 @@ class CommemorateWindow(QWidget):
 
             # 页面切换过渡进度（交叉淡入淡出）
             if self._trans_progress < 1.0:
-                self._trans_progress = min(1.0, self._trans_progress + 0.04)
+                self._trans_progress = min(1.0, self._trans_progress + 0.035)
                 if self._trans_progress >= 1.0:
                     self._trans_old = None
 
@@ -791,20 +791,22 @@ class CommemorateWindow(QWidget):
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
 
-        # 1. 当前页面内容（切换时交叉淡入淡出）
+        # 1. 当前页面内容（切换时先淡出旧页到深色底，再淡入新页）
         page = self._current_page()
         if self._trans_old is not None and self._trans_progress < 1.0:
             p = self._trans_progress
-            painter.setOpacity(1.0 - p)
-            self._trans_old.paint(painter, w, h)
-            painter.setOpacity(p)
-            page.paint(painter, w, h)
+            if p < 0.5:
+                painter.setOpacity(1.0 - p * 2)
+                self._trans_old.paint(painter, w, h)
+            else:
+                painter.setOpacity((p - 0.5) * 2)
+                page.paint(painter, w, h)
             painter.setOpacity(1.0)
         else:
             page.paint(painter, w, h)
 
-        # 2. 边框微光
-        border_color = QColor(180, 140, 200, int(40 * self._current_page().fade_in))
+        # 2. 边框微光（固定透明度，不随页面淡入跳变）
+        border_color = QColor(180, 140, 200, 40)
         painter.setPen(QPen(border_color, 1.5))
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(QRectF(1, 1, w - 2, h - 2), 19, 19)
