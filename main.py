@@ -584,7 +584,8 @@ if __name__ == "__main__":
         # 调试模式：跳过登录与同步，直接进入主窗口
         finalize_sync({"success": True, "sync_errors": [], "preflight": None})
     elif config.sync_auto_pull and "--skip-sync" not in args:
-        start_sync_thread()
+        # 等登录窗口出现后再启动同步，避免启动过早导致网络请求失败
+        QTimer.singleShot(500, start_sync_thread)
     else:
         # 跳过同步：使用本地缓存，直接视为同步成功
         finalize_sync({"success": True, "sync_errors": [], "preflight": None})
