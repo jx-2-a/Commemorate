@@ -1025,10 +1025,10 @@ class LoginWindow(QDialog):
             self.upd_progress.setVisible(False)
             self.cancel_update_btn.setVisible(False)
             self.skip_update_btn.setVisible(False)
-            self.upd_status.setText("更新完成，正在重启...")
+            self.upd_status.setText("更新已就绪，请关闭应用后重新打开")
             self.upd_status.setStyleSheet(f"""
                 QLabel {{
-                    color: {ACCENT_PINK.name()};
+                    color: {ERROR_COLOR.name()};
                     font-family: "Microsoft YaHei";
                     font-size: 12px;
                     background: transparent;

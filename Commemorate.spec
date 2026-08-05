@@ -7,7 +7,6 @@ a = Analysis(
     binaries=[],
     datas=[
         ('config.json', '.'),
-        ('updater.exe', '.'),
     ],
     hiddenimports=['PyQt5.QtNetwork'],
     hookspath=[],

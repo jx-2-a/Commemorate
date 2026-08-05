@@ -1,14 +1,12 @@
 """
 UpdateManager — 版本检查 & 自动更新
 异步检查公开仓库 version.json，从 GitHub Releases 下载更新包，
-校验 SHA-256 后解压，由独立的 updater.exe 替换 exe 并重启
+校验 SHA-256 后解压，暂存到 appdata/local/pending，下次启动应用时替换 exe
 """
 import hashlib
-import os
 import sys
 import json
 import shutil
-import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
@@ -211,51 +209,33 @@ class UpdateManager(QObject):
         if self._download_reply and self._download_reply.isRunning():
             self._download_reply.abort()
 
-    def schedule_update(self, new_exe_path: str):
-        """安排独立更新程序 updater.exe 替换 exe 并重启
+    def install_update(self, new_exe_path: str):
+        """下载 / 解压完成后调用：立即把新 exe 替换到当前程序路径
 
-        旧程序不直接替换 / 启动新 exe，而是把打包内置的 updater.exe 放到
-        appdata/local/ 后立即退出；updater.exe 独立完成：
-        等待旧进程完全退出 → 替换 exe → 等待杀毒安定 → 清除 _MEIPASS2 后
-        启动新版本 → 验证新版本解压成功（失败自动重试），全程写 updater.log。
+        当前程序正在运行，Windows 允许把运行中的 exe 改名：
+        1. 当前 exe → Commemorate.exe.old
+        2. 新 exe 复制到原路径
+        替换完成后不自动启动新 exe（新旧进程交替时启动不稳定），
+        由界面提醒用户关闭并重新打开应用；用户手动打开必然成功。
         """
         if not getattr(sys, 'frozen', False):
             self.error_occurred.emit("开发模式不支持自动更新，请手动拉取代码")
             return
 
-        target_exe = sys.executable
         source = Path(new_exe_path)
         if not source.is_file():
             self.error_occurred.emit("更新安装失败：未找到新版本程序文件")
             return
 
         try:
-            # 把打包内置的独立更新程序复制到 appdata/local/
-            meipass = Path(getattr(sys, '_MEIPASS', Path(target_exe).parent))
-            bundled_updater = meipass / "updater.exe"
-            updater_exe = self.config.local_dir / "updater.exe"
-            shutil.copy2(str(bundled_updater), str(updater_exe))
+            target = Path(sys.executable)
+            backup = target.with_name(target.name + ".old")
+            if backup.exists():
+                backup.unlink()
+            target.rename(backup)
+            shutil.copy2(str(source), str(target))
         except Exception as e:
-            self.error_occurred.emit(f"更新安装失败：无法准备更新程序 {e}")
-            return
-
-        try:
-            # 隐藏更新程序的控制台窗口，避免弹出黑框
-            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-            subprocess.Popen(
-                [
-                    str(updater_exe),
-                    "--target", str(Path(target_exe)),
-                    "--source", str(source),
-                    "--tmp", str(source.parent),
-                    "--log", str(self.config.local_dir / "updater.log"),
-                    "--old-pid", str(os.getpid()),
-                    "--name", "Commemorate",
-                ],
-                creationflags=flags,
-            )
-        except OSError as e:
-            self.error_occurred.emit(f"更新安装失败：无法启动更新程序 {e}")
+            self.error_occurred.emit(f"更新安装失败: {e}")
 
 
 # ── 更新提示对话框 ─────────────────────────────────────────

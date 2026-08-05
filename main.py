@@ -382,6 +382,16 @@ if __name__ == "__main__":
     config = ConfigManager("config.json")
     args = sys.argv[1:]
 
+    # 清理上次更新替换后遗留的备份 exe（Commemorate.exe.old）
+    try:
+        old_backup = Path(sys.executable).with_name(
+            Path(sys.executable).name + ".old"
+        )
+        if old_backup.exists():
+            old_backup.unlink()
+    except Exception:
+        pass
+
     # ---- 设置本地令牌（--set-token <token>），不依赖环境变量 ----
     if "--set-token" in args:
         idx = args.index("--set-token")
@@ -517,7 +527,7 @@ if __name__ == "__main__":
                     login.set_update_state("error", {"message": "开发模式不支持自动更新，请用 git pull 拉取最新代码"})
                 else:
                     login.set_update_state("installing")
-                    update_mgr.schedule_update(filepath)
+                    update_mgr.install_update(filepath)
                     done["ok"] = True
                 dl_loop.quit()
 
@@ -544,13 +554,10 @@ if __name__ == "__main__":
             login.cancel_update_btn.clicked.disconnect(on_download_cancel)
 
             if done["ok"]:
-                # 更新已安排：把本地版本号同步为新版本，重启后不再重复提示
+                # 更新已替换完成：本地版本号同步为新版本，避免重启后重复提示；
+                # 不自动退出，面板底部红色提示由用户手动关闭应用后重新打开
                 config.app_version = preflight["latest"]
                 config.save()
-                login.accept()
-                stop_sync_thread()
-                window._shutdown()
-                sys.exit(0)
             # 失败/取消：面板显示错误，用户可点击“重试更新”或关闭退出
 
     login.login_ok.connect(on_login_ok)
