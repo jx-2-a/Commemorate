@@ -414,6 +414,21 @@ class CommemorateWindow(QWidget):
             out.append((x, y))
         return out
 
+    def _sidebar_arc_path(self):
+        """侧边装饰圆弧（与目录项同一弧线）"""
+        w, h = self.win_w, self.win_h
+        path = QPainterPath()
+        steps = 48
+        for i in range(steps + 1):
+            t = i / steps
+            y = h * 0.18 + t * (h * 0.64)
+            x = 34 + 58 * math.sin(t * math.pi)
+            if i == 0:
+                path.moveTo(x, y)
+            else:
+                path.lineTo(x, y)
+        return path
+
     def _tick(self):
         try:
             self.frame += 1
@@ -486,14 +501,22 @@ class CommemorateWindow(QWidget):
         if self.sidebar_opacity <= 0.02:
             return
         alpha = int(255 * self.sidebar_opacity)
+
+        # 侧边装饰圆弧
+        arc_pen = QPen(QColor(255, 170, 210, int(alpha * 0.45)), 2)
+        arc_pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(arc_pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPath(self._sidebar_arc_path())
+
         for i, (x, y) in enumerate(self._sidebar_item_positions()):
             current = (i == self.current_index)
             hover = (i == self.sidebar_hover)
             if current:
-                font = QFont("Microsoft YaHei", 18, QFont.Bold)
+                font = QFont("Microsoft YaHei", 16)
                 color = QColor(255, 235, 245, alpha)
             else:
-                font = QFont("Microsoft YaHei", 14)
+                font = QFont("Microsoft YaHei", 13)
                 color = QColor(225, 205, 235, int(alpha * 0.75))
             if hover and not current:
                 color = QColor(255, 220, 240, alpha)
