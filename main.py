@@ -596,12 +596,14 @@ class CommemorateWindow(QWidget):
         self.config = config
         self.pages = [cls(config) for cls in PAGE_CLASSES]
         self.current_index = 0
+        self._page_fade = 1.0
 
         self.setWindowTitle(f"💖 {config.app_name}")
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
         )
+        self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setMouseTracking(True)
 
@@ -653,11 +655,12 @@ class CommemorateWindow(QWidget):
         self._jump_to_page((self.current_index + delta) % n)
 
     def _jump_to_page(self, idx):
-        """跳转到指定页面（直接切换，不做交叉淡化）"""
+        """跳转到指定页面：旧页直接消失，新页逐渐淡入"""
         n = len(self.pages)
         if not (0 <= idx < n) or idx == self.current_index:
             return
         self.current_index = idx
+        self._page_fade = 0.0
         self._current_page().show_time()
         self.update()
 
@@ -747,6 +750,10 @@ class CommemorateWindow(QWidget):
             else:
                 self.sidebar_hover_alpha = max(0.0, self.sidebar_hover_alpha - 0.08)
 
+            # 新页面逐渐淡入（不做交叉渐变）
+            if self._page_fade < 1.0:
+                self._page_fade = min(1.0, self._page_fade + 0.05)
+
             # 每根短横线的长度平滑过渡（避免恢复时与当前页横线冲突闪烁）
             hovered = self.sidebar_hover
             ha = self.sidebar_hover_alpha
@@ -775,11 +782,10 @@ class CommemorateWindow(QWidget):
         painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         w, h = self.win_w, self.win_h
 
-        # 0. 不透明深色底（页面为圆角卡片，四角露出深色）
-        painter.fillRect(QRectF(0, 0, w, h), QColor(8, 3, 22))
-
-        # 1. 当前页面内容（直接切换，不做交叉淡化）
+        # 0. 当前页面内容（窗口背景透明，新页面逐渐淡入，不做交叉渐变）
+        painter.setOpacity(self._page_fade)
         self._current_page().paint(painter, w, h)
+        painter.setOpacity(1.0)
 
         # 2. 左侧页面目录
         self._paint_sidebar(painter, w, h)
