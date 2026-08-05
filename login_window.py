@@ -244,6 +244,19 @@ class LoginWindow(QDialog):
         self.upd_status.setAlignment(Qt.AlignCenter)
         self.upd_status.setGeometry(60, 400, 300, 30)
 
+        # 更新完成后的重启提示（按钮下方红色小字）
+        self.upd_restart_hint = QLabel("", self)
+        self.upd_restart_hint.setAlignment(Qt.AlignCenter)
+        self.upd_restart_hint.setGeometry(60, 363, 300, 24)
+        self.upd_restart_hint.setStyleSheet(f"""
+            QLabel {{
+                color: {ERROR_COLOR.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 12px;
+                background: transparent;
+            }}
+        """)
+
         self.cancel_update_btn = QPushButton("取消下载", self)
         self.cancel_update_btn.setGeometry(70, 435, 280, 32)
         self.cancel_update_btn.setCursor(Qt.PointingHandCursor)
@@ -928,7 +941,8 @@ class LoginWindow(QDialog):
     def _hide_update_panel(self):
         for w in (self.upd_title, self.upd_version, self.upd_changelog,
                   self.update_btn, self.upd_progress, self.upd_status,
-                  self.cancel_update_btn, self.skip_update_btn):
+                  self.upd_restart_hint, self.cancel_update_btn,
+                  self.skip_update_btn):
             w.setVisible(False)
 
     def show_update_panel(self, latest, current, changelog=""):
@@ -954,6 +968,8 @@ class LoginWindow(QDialog):
         self.upd_changelog.setText(text if text else "有新版本可用，点击下方按钮开始更新。")
         self.upd_progress.setValue(0)
         self.upd_status.setText("")
+        self.upd_restart_hint.setText("")
+        self.upd_restart_hint.setVisible(False)
         self.update_btn.setEnabled(True)
         self.update_btn.setText("立即更新")
         self.cancel_update_btn.setVisible(False)
@@ -968,6 +984,8 @@ class LoginWindow(QDialog):
     def set_update_state(self, state, data=None):
         """更新流程状态：start / downloading / error / installing"""
         data = data or {}
+        # 默认隐藏重启提示，仅在 installing 状态显示
+        self.upd_restart_hint.setVisible(False)
         if state == "start":
             self._update_active = True
             self.update_btn.setEnabled(False)
@@ -1025,15 +1043,9 @@ class LoginWindow(QDialog):
             self.upd_progress.setVisible(False)
             self.cancel_update_btn.setVisible(False)
             self.skip_update_btn.setVisible(False)
-            self.upd_status.setText("更新已就绪，请关闭应用后重新打开")
-            self.upd_status.setStyleSheet(f"""
-                QLabel {{
-                    color: {ERROR_COLOR.name()};
-                    font-family: "Microsoft YaHei";
-                    font-size: 12px;
-                    background: transparent;
-                }}
-            """)
+            self.upd_status.setText("")
+            self.upd_restart_hint.setText("更新完成，请关闭并重新打开程序")
+            self.upd_restart_hint.setVisible(True)
 
     # ── 鼠标事件（拖拽窗口 & 关闭按钮）──────────────────
 
