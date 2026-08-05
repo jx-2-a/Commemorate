@@ -222,6 +222,11 @@ class CountdownPage:
         self.w = w
         self.h = h
 
+        # 不透明底色（避免圆角处露出桌面）
+        painter.setBrush(QBrush(QColor(8, 3, 22)))
+        painter.setPen(Qt.NoPen)
+        painter.drawRect(QRectF(0, 0, w, h))
+
         # ── 1. 夜空背景 ──────────────────────────────────
         bg = QLinearGradient(0, 0, 0, h)
         bg.setColorAt(0.0, QColor(5, 2, 20))
@@ -312,9 +317,11 @@ class CountdownPage:
 
 
 class PlaceholderPage:
-    """测试用占位页面：仅显示页面名称（后续替换为真实功能页）"""
+    """测试用占位页面：每个页面一套配色 + 线/面/色装饰（后续替换为真实功能页）"""
 
     name = "Placeholder"
+    bg_colors = ((8, 4, 24), (22, 10, 42), (42, 18, 56))
+    accent = (255, 170, 210)
 
     def __init__(self, config):
         self.config = config
@@ -333,13 +340,43 @@ class PlaceholderPage:
         pass
 
     def paint(self, painter, w, h):
-        bg = QLinearGradient(0, 0, 0, h)
-        bg.setColorAt(0.0, QColor(8, 4, 24))
-        bg.setColorAt(0.5, QColor(22, 10, 42))
-        bg.setColorAt(1.0, QColor(42, 18, 56))
-        painter.setBrush(QBrush(bg))
+        # 不透明底色
+        painter.setBrush(QBrush(QColor(*self.bg_colors[0])))
         painter.setPen(Qt.NoPen)
+        painter.drawRect(QRectF(0, 0, w, h))
+
+        # 渐变背景（圆角）
+        bg = QLinearGradient(0, 0, 0, h)
+        bg.setColorAt(0.0, QColor(*self.bg_colors[0]))
+        bg.setColorAt(0.5, QColor(*self.bg_colors[1]))
+        bg.setColorAt(1.0, QColor(*self.bg_colors[2]))
+        painter.setBrush(QBrush(bg))
         painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
+
+        # 装饰：大块半透明色面（颜色随页面主题）
+        seed = sum(ord(c) for c in self.name)
+        rnd = random.Random(seed)
+        accent = QColor(*self.accent)
+        for _ in range(3):
+            bx = rnd.uniform(0.15, 0.85) * w
+            by = rnd.uniform(0.15, 0.85) * h
+            br = rnd.uniform(0.08, 0.18) * w
+            blob = QRadialGradient(QPointF(bx, by), br)
+            blob.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 46))
+            blob.setColorAt(1.0, QColor(accent.red(), accent.green(), accent.blue(), 0))
+            painter.setBrush(QBrush(blob))
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(QPointF(bx, by), br, br)
+
+        # 装饰：细线
+        line_pen = QPen(QColor(accent.red(), accent.green(), accent.blue(), 55), 1)
+        painter.setPen(line_pen)
+        painter.drawLine(QPointF(w * 0.12, h * 0.2), QPointF(w * 0.34, h * 0.2))
+        painter.drawLine(QPointF(w * 0.66, h * 0.8), QPointF(w * 0.88, h * 0.8))
+        painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 30), 1))
+        painter.drawEllipse(QPointF(w * 0.8, h * 0.18), w * 0.12, w * 0.12)
+
+        # 页面名称
         painter.setFont(QFont("Microsoft YaHei", 36, QFont.Bold))
         painter.setPen(QColor(255, 235, 245, 220))
         fm = QFontMetrics(painter.font())
@@ -349,22 +386,32 @@ class PlaceholderPage:
 
 class GalleryPage(PlaceholderPage):
     name = "Gallery"
+    bg_colors = ((6, 10, 28), (14, 30, 58), (26, 52, 86))
+    accent = (130, 190, 255)
 
 
 class MusicPage(PlaceholderPage):
     name = "Music"
+    bg_colors = ((24, 4, 30), (46, 12, 52), (74, 26, 70))
+    accent = (255, 150, 220)
 
 
 class NotesPage(PlaceholderPage):
     name = "Notes"
+    bg_colors = ((4, 24, 18), (10, 42, 34), (20, 66, 50))
+    accent = (120, 230, 180)
 
 
 class SettingsPage(PlaceholderPage):
     name = "Settings"
+    bg_colors = ((10, 10, 30), (20, 24, 52), (36, 44, 80))
+    accent = (170, 160, 255)
 
 
 class DiaryPage(PlaceholderPage):
     name = "Diary"
+    bg_colors = ((30, 12, 6), (56, 24, 12), (86, 42, 22))
+    accent = (255, 190, 130)
 
 
 # 页面注册表：以后新增功能页时，把页面类加进这个列表即可。
@@ -576,6 +623,11 @@ class CommemorateWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         w, h = self.win_w, self.win_h
+
+        # 0. 不透明底色：避免过渡动画或圆角处露出桌面
+        painter.setBrush(QBrush(QColor(8, 3, 22)))
+        painter.setPen(Qt.NoPen)
+        painter.drawRect(QRectF(0, 0, w, h))
 
         # 1. 当前页面内容（切换时交叉淡入淡出）
         page = self._current_page()
