@@ -410,27 +410,27 @@ class CommemorateWindow(QWidget):
         n = len(self.pages)
         if n == 0:
             return []
-        cx = 74
+        cx = 16
         cy = self.win_h * 0.5
-        r = 60
+        r = 30
         out = []
         for idx in range(max(0, self.current_index - 2), min(n, self.current_index + 3)):
             slot = idx - self.current_index + 2
-            theta = math.radians(270 - slot * 45)
+            theta = math.radians(-90 + slot * 45)
             x = cx + r * math.cos(theta)
             y = cy + r * math.sin(theta)
             out.append((idx, slot, x, y))
         return out
 
     def _sidebar_ring_path(self):
-        """圆环左侧半圆弧装饰线"""
-        cx = 74
+        """左侧半圆弧装饰线：两端贴近侧边，中间略微向右突起"""
+        cx = 16
         cy = self.win_h * 0.5
-        r = 60
+        r = 30
         path = QPainterPath()
         steps = 48
         for i in range(steps + 1):
-            theta = math.radians(270 - 180 * i / steps)
+            theta = math.radians(-90 + 180 * i / steps)
             x = cx + r * math.cos(theta)
             y = cy + r * math.sin(theta)
             if i == 0:
@@ -512,8 +512,8 @@ class CommemorateWindow(QWidget):
             return
         alpha = int(255 * self.sidebar_opacity)
 
-        # 圆环左侧半圆弧装饰线（与字体相近但略浅的颜色）
-        arc_pen = QPen(QColor(220, 210, 230, int(alpha * 0.5)), 2)
+        # 半圆弧装饰线（比字体略浅，透明度更高）
+        arc_pen = QPen(QColor(240, 238, 245, int(alpha * 0.32)), 2)
         arc_pen.setCapStyle(Qt.RoundCap)
         painter.setPen(arc_pen)
         painter.setBrush(Qt.NoBrush)
@@ -524,12 +524,12 @@ class CommemorateWindow(QWidget):
             hover = (idx == self.sidebar_hover)
             if current:
                 font = QFont("Microsoft YaHei", 13)
-                color = QColor(245, 245, 250, alpha)
+                color = QColor(245, 245, 250, int(alpha * 0.88))
             else:
                 font = QFont("Microsoft YaHei", 11)
-                color = QColor(208, 208, 218, int(alpha * 0.8))
+                color = QColor(208, 208, 218, int(alpha * 0.62))
             if hover and not current:
-                color = QColor(235, 230, 240, alpha)
+                color = QColor(235, 230, 240, int(alpha * 0.85))
             painter.setFont(font)
             text = self.pages[idx].name
             # 标签左侧与弧线对齐
