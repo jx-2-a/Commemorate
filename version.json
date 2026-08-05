@@ -1,7 +1,7 @@
 {
-  "sha256": "9af518638e7f8d1a17ef46e8e644f02ba98817b111caac897dfff3a8eb52d273",
-  "version": "1.1.6",
-  "changelog": "自动发布 v1.1.6",
+  "download_url": "https://github.com/jx-2-a/Commemorate/releases/download/v1.1.7/app.zip",
+  "changelog": "自动发布 v1.1.7",
   "release_date": "2026-08-05",
-  "download_url": "https://github.com/jx-2-a/Commemorate/releases/download/v1.1.6/app.zip"
+  "version": "1.1.7",
+  "sha256": "dfa0f1b6fea86ab8a1b3a7687f183b895cd62b8ab53b436f98e348858e42e8ab"
 }
