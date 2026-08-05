@@ -261,9 +261,9 @@ class CountdownPage:
             self._draw_heart(painter, hh.x, hh.y, hh.size)
 
         # ── 5. 中央：DHM 计时 + 随机话语 ──
+        cx = w / 2
         title_alpha = int(255 * self.fade_in)
         if title_alpha > 5:
-            cx = w / 2
             timer_y = int(h * 0.46)
             msg_y = timer_y + 90
 
@@ -791,8 +791,13 @@ class CommemorateWindow(QWidget):
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
 
-        # 1. 当前页面内容（切换时交叉淡入淡出）
+        # 1. 当前页面内容（裁剪到圆角范围，避免场景元素画到圆角外；
+        #    切换交叉淡入淡出）
         page = self._current_page()
+        page_clip = QPainterPath()
+        page_clip.addRoundedRect(QRectF(0, 0, w, h), 20, 20)
+        painter.save()
+        painter.setClipPath(page_clip)
         if self._trans_old is not None and self._trans_progress < 1.0:
             p = self._trans_progress
             painter.setOpacity(1.0 - p)
@@ -802,8 +807,15 @@ class CommemorateWindow(QWidget):
             painter.setOpacity(1.0)
         else:
             page.paint(painter, w, h)
+        painter.restore()
 
-        # 2. 边框微光（固定透明度，不随页面淡入跳变）
+        # 2. 边框区稳定深色衬底：盖住圆角抗锯齿边缘，避免过渡时透出桌面
+        rim_pen = QPen(QColor(8, 3, 22, 235), 4)
+        painter.setPen(rim_pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(QRectF(2, 2, w - 4, h - 4), 18, 18)
+
+        # 3. 边框微光（固定透明度，不随页面淡入跳变）
         border_color = QColor(180, 140, 200, 40)
         painter.setPen(QPen(border_color, 1.5))
         painter.setBrush(Qt.NoBrush)
