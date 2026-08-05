@@ -230,7 +230,7 @@ class CountdownPage:
         bg.setColorAt(1.0, QColor(40, 15, 55))
         painter.setBrush(QBrush(bg))
         painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
+        painter.drawRect(QRectF(0, 0, w, h))
 
         # ── 2. 星星 ──────────────────────────────────────
         for s in self.stars:
@@ -350,7 +350,7 @@ class ScenePage:
         bg.setColorAt(0.5, QColor(*self.bg_colors[1]))
         bg.setColorAt(1.0, QColor(*self.bg_colors[2]))
         painter.setBrush(QBrush(bg))
-        painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
+        painter.drawRect(QRectF(0, 0, w, h))
         # 场景动画
         self._paint_scene(painter, w, h)
         # 页面名称
