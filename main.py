@@ -160,7 +160,7 @@ def _load_random_message(config) -> str:
 class CountdownPage:
     """纪念计时页：夜空粒子 + DHM 计时 + 随机话语"""
 
-    name = "纪念计时"
+    name = "Countdown"
 
     def __init__(self, config):
         self.config = config
@@ -410,7 +410,7 @@ class CommemorateWindow(QWidget):
         for i in range(n):
             t = 0.5 if n == 1 else i / (n - 1)
             y = h * 0.18 + t * (h * 0.64)
-            x = 34 + 58 * math.sin(t * math.pi)
+            x = 22 + 24 * math.sin(t * math.pi)
             out.append((x, y))
         return out
 
@@ -422,7 +422,7 @@ class CommemorateWindow(QWidget):
         for i in range(steps + 1):
             t = i / steps
             y = h * 0.18 + t * (h * 0.64)
-            x = 34 + 58 * math.sin(t * math.pi)
+            x = 22 + 24 * math.sin(t * math.pi)
             if i == 0:
                 path.moveTo(x, y)
             else:
@@ -453,7 +453,7 @@ class CommemorateWindow(QWidget):
 
             # 左侧页面目录：鼠标靠近左边缘时浮现，远离时消失
             near_sidebar = (
-                mouse_pos.x() <= 150
+                mouse_pos.x() <= 110
                 and 0 <= mouse_pos.y() <= self.win_h
             )
             if near_sidebar:
@@ -463,7 +463,7 @@ class CommemorateWindow(QWidget):
             self.sidebar_hover = -1
             if self.sidebar_opacity > 0.2:
                 for i, (x, y) in enumerate(self._sidebar_item_positions()):
-                    if QRectF(x - 90, y - 20, 180, 40).contains(mouse_pos):
+                    if QRectF(x - 60, y - 14, 120, 28).contains(mouse_pos):
                         self.sidebar_hover = i
                         break
 
@@ -513,10 +513,10 @@ class CommemorateWindow(QWidget):
             current = (i == self.current_index)
             hover = (i == self.sidebar_hover)
             if current:
-                font = QFont("Microsoft YaHei", 16)
+                font = QFont("Microsoft YaHei", 13)
                 color = QColor(255, 235, 245, alpha)
             else:
-                font = QFont("Microsoft YaHei", 13)
+                font = QFont("Microsoft YaHei", 11)
                 color = QColor(225, 205, 235, int(alpha * 0.75))
             if hover and not current:
                 color = QColor(255, 220, 240, alpha)
@@ -526,7 +526,7 @@ class CommemorateWindow(QWidget):
             tw = fm.horizontalAdvance(text)
             if current:
                 painter.setPen(QPen(QColor(255, 160, 200, alpha), 3))
-                painter.drawLine(QPointF(x - 72, y), QPointF(x - 48, y))
+                painter.drawLine(QPointF(x - 52, y), QPointF(x - 38, y))
             painter.setPen(color)
             painter.drawText(int(x - tw / 2), int(y), text)
 
@@ -624,7 +624,7 @@ class CommemorateWindow(QWidget):
 
             if self.sidebar_opacity > 0.4:
                 for i, (x, y) in enumerate(self._sidebar_item_positions()):
-                    if QRectF(x - 90, y - 20, 180, 40).contains(pos):
+                    if QRectF(x - 60, y - 14, 120, 28).contains(pos):
                         self.current_index = i
                         self._current_page().show_time()
                         self.update()
