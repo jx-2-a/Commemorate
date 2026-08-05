@@ -216,18 +216,17 @@ class ConfigManager:
         url = self._data.get("update", {}).get("check_url", "")
         if url:
             return url
-        # 未显式配置时，默认从公开仓库的 version.json 检查更新（无需 token）
+        # 未显式配置时，默认走 api.github.com 的 contents 接口读取 version.json
+        # （国内不挂梯子也可访问；raw.githubusercontent.com 常被墙）
         owner = self._data.get("update", {}).get("repo_owner", "")
         repo = self._data.get("update", {}).get("repo_name", "")
         if owner and repo:
-            branch = self._data.get("update", {}).get("branch", "main")
-            return f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/version.json"
+            return f"https://api.github.com/repos/{owner}/{repo}/contents/version.json"
         # 兼容旧配置：从数据仓库推导
         owner, repo = self.sync_repo_owner, self.sync_repo_name
         if owner and repo:
             if self.sync_use_api:
                 return f"https://api.github.com/repos/{owner}/{repo}/contents/version.json"
-            return f"https://raw.githubusercontent.com/{owner}/{repo}/{self.sync_branch}/version.json"
         return ""
 
     @property
