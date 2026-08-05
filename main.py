@@ -413,8 +413,8 @@ class CommemorateWindow(QWidget):
                     )
                     if maxed:
                         # 已最大化/全屏：显示“还原”图标（两个重叠方框）
-                        painter.drawRect(QRectF(cx - 9, cy - 8, 11, 9))
-                        painter.drawRect(QRectF(cx - 2, cy - 1, 11, 9))
+                        painter.drawRect(QRectF(cx - 10, cy - 9, 13, 11))
+                        painter.drawRect(QRectF(cx - 4, cy - 2, 14, 12))
                     else:
                         # 最大化：单个方框
                         painter.drawRect(QRectF(cx - 8, cy - 7, 16, 14))
