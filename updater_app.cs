@@ -45,6 +45,9 @@ class CommemorateUpdater
         _logFile = GetArg(args, "--log");
         string oldPidStr = GetArg(args, "--old-pid");
         string exeName = GetArg(args, "--name");
+        string noReplace = GetArg(args, "--no-replace");
+        int delaySec = 15;
+        int.TryParse(GetArg(args, "--delay") ?? "15", out delaySec);
 
         if (string.IsNullOrEmpty(target) || string.IsNullOrEmpty(source) ||
             string.IsNullOrEmpty(_logFile))
@@ -78,20 +81,30 @@ class CommemorateUpdater
         // 多等 1 秒，确保旧进程的 PyInstaller 临时目录清理完成
         Thread.Sleep(1000);
 
-        // 2. 替换 exe（带重试与大小校验）
-        if (!ReplaceFile(source, target))
+        // 2. 替换 exe（带重试与大小校验）；--no-replace 用于测试定位
+        if (string.IsNullOrEmpty(noReplace))
         {
-            Log("ERROR: replace failed");
-            Console.WriteLine("文件替换失败，请关闭杀毒软件后手动更新。");
-            return 1;
+            if (!ReplaceFile(source, target))
+            {
+                Log("ERROR: replace failed");
+                Console.WriteLine("文件替换失败，请关闭杀毒软件后手动更新。");
+                return 1;
+            }
+            Log("replace ok");
         }
-        Log("replace ok");
+        else
+        {
+            Log("replace skipped (--no-replace)");
+        }
 
-        // 3. 等 3 秒，避开杀毒软件对刚写入文件的实时扫描
-        Thread.Sleep(3000);
+        // 3. 等 delaySec 秒，避开杀毒软件对刚写入文件的实时扫描
+        Log("waiting " + delaySec + "s before launch");
+        Thread.Sleep(delaySec * 1000);
 
-        // 4. 干净环境启动新版本；失败自动重试
+        // 4. 干净环境启动新版本；失败后用更长间隔自动重试
+        //    （覆盖刚替换的 exe 后系统/杀毒需要时间放行，过早启动会失败）
         bool launched = false;
+        int[] retryDelays = { 10, 20 };
         for (int i = 1; i <= 3; i++)
         {
             Log("launch attempt " + i);
@@ -102,11 +115,11 @@ class CommemorateUpdater
                 launched = true;
                 break;
             }
-            if (i < 3)
+            if (i <= retryDelays.Length)
             {
-                Log("launch may have failed, cleaning and retrying");
+                Log("launch may have failed, waiting " + retryDelays[i - 1] + "s and retrying");
                 KillByName(exeName);
-                Thread.Sleep(3000);
+                Thread.Sleep(retryDelays[i - 1] * 1000);
             }
         }
         if (!launched)

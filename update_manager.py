@@ -240,6 +240,8 @@ class UpdateManager(QObject):
             return
 
         try:
+            # 隐藏更新程序的控制台窗口，避免弹出黑框
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
             subprocess.Popen(
                 [
                     str(updater_exe),
@@ -249,7 +251,8 @@ class UpdateManager(QObject):
                     "--log", str(self.config.local_dir / "updater.log"),
                     "--old-pid", str(os.getpid()),
                     "--name", "Commemorate",
-                ]
+                ],
+                creationflags=flags,
             )
         except OSError as e:
             self.error_occurred.emit(f"更新安装失败：无法启动更新程序 {e}")
