@@ -387,6 +387,8 @@ class CommemorateWindow(QWidget):
         self.config = config
         self.pages = [cls(config) for cls in PAGE_CLASSES]
         self.current_index = 0
+        self._trans_old = None
+        self._trans_progress = 1.0
 
         self.setWindowTitle(f"💖 {config.app_name}")
         self.setWindowFlags(
@@ -442,7 +444,16 @@ class CommemorateWindow(QWidget):
         n = len(self.pages)
         if n < 2:
             return
-        self.current_index = (self.current_index + delta) % n
+        self._jump_to_page((self.current_index + delta) % n)
+
+    def _jump_to_page(self, idx):
+        """跳转到指定页面，并启动交叉淡入淡出过渡"""
+        n = len(self.pages)
+        if not (0 <= idx < n) or idx == self.current_index:
+            return
+        self._trans_old = self._current_page()
+        self.current_index = idx
+        self._trans_progress = 0.0
         self._current_page().show_time()
         self.update()
 
@@ -532,6 +543,12 @@ class CommemorateWindow(QWidget):
             else:
                 self.sidebar_hover_alpha = max(0.0, self.sidebar_hover_alpha - 0.08)
 
+            # 页面切换过渡进度（交叉淡入淡出）
+            if self._trans_progress < 1.0:
+                self._trans_progress = min(1.0, self._trans_progress + 0.04)
+                if self._trans_progress >= 1.0:
+                    self._trans_old = None
+
             # 每根短横线的长度平滑过渡（避免恢复时与当前页横线冲突闪烁）
             hovered = self.sidebar_hover
             ha = self.sidebar_hover_alpha
@@ -560,8 +577,17 @@ class CommemorateWindow(QWidget):
         painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         w, h = self.win_w, self.win_h
 
-        # 1. 当前页面内容
-        self._current_page().paint(painter, w, h)
+        # 1. 当前页面内容（切换时交叉淡入淡出）
+        page = self._current_page()
+        if self._trans_old is not None and self._trans_progress < 1.0:
+            p = self._trans_progress
+            painter.setOpacity(1.0 - p)
+            self._trans_old.paint(painter, w, h)
+            painter.setOpacity(p)
+            page.paint(painter, w, h)
+            painter.setOpacity(1.0)
+        else:
+            page.paint(painter, w, h)
 
         # 2. 边框微光
         border_color = QColor(180, 140, 200, int(40 * self._current_page().fade_in))
@@ -712,9 +738,7 @@ class CommemorateWindow(QWidget):
             if self.sidebar_opacity > 0.4:
                 for idx, slot, x, y in self._sidebar_layout():
                     if QRectF(x - 6, y - 14, 130, 28).contains(pos):
-                        self.current_index = idx
-                        self._current_page().show_time()
-                        self.update()
+                        self._jump_to_page(idx)
                         event.accept()
                         return
 
