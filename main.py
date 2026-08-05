@@ -817,12 +817,6 @@ class CommemorateWindow(QWidget):
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
 
-        # 3. 边框微光（固定透明度，不随页面淡入跳变）
-        border_color = QColor(180, 140, 200, 40)
-        painter.setPen(QPen(border_color, 1.5))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(QRectF(1, 1, w - 2, h - 2), 19, 19)
-
         # 3. 左侧页面目录
         self._paint_sidebar(painter, w, h)
 
