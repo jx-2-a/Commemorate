@@ -604,6 +604,7 @@ class CommemorateWindow(QWidget):
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
         )
+        self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setMouseTracking(True)
 
@@ -613,7 +614,6 @@ class CommemorateWindow(QWidget):
         self.win_h = int(screen.height() * 0.7)
         self.resize(self.win_w, self.win_h)
         self.move((screen.width() - self.win_w) // 2, (screen.height() - self.win_h) // 2)
-        self._apply_window_mask()
         for page in self.pages:
             page.resize(self.win_w, self.win_h)
 
@@ -641,12 +641,6 @@ class CommemorateWindow(QWidget):
 
         # 3 秒后显示底部时间
         QTimer.singleShot(2500, self._show_time)
-
-    def _apply_window_mask(self):
-        """把窗口剪裁成圆角形状：内部完全不透明，边缘不会透出桌面"""
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(0, 0, self.win_w, self.win_h), 20, 20)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
     def _current_page(self):
         return self.pages[self.current_index % len(self.pages)]
@@ -792,11 +786,17 @@ class CommemorateWindow(QWidget):
         painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         w, h = self.win_w, self.win_h
 
-        # 0. 整块不透明底色（窗口已由遮罩剪成圆角，内部完全覆盖、不露桌面）
-        painter.fillRect(QRectF(0, 0, w, h), QColor(8, 3, 22))
+        # 0. 不透明圆角底色（保持圆角平滑）
+        painter.setBrush(QBrush(QColor(8, 3, 22)))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
 
-        # 1. 当前页面内容（切换时交叉淡入淡出）
+        # 1. 当前页面内容（裁剪到圆角内，切换时交叉淡入淡出）
         page = self._current_page()
+        page_clip = QPainterPath()
+        page_clip.addRoundedRect(QRectF(0, 0, w, h), 20, 20)
+        painter.save()
+        painter.setClipPath(page_clip)
         if self._trans_old is not None and self._trans_progress < 1.0:
             p = self._trans_progress
             painter.setOpacity(1.0 - p)
@@ -806,8 +806,18 @@ class CommemorateWindow(QWidget):
             painter.setOpacity(1.0)
         else:
             page.paint(painter, w, h)
+        painter.restore()
 
-        # 2. 边框微光（固定透明度，不随页面淡入跳变）
+        # 2. 柔和暗角：压暗边缘，遮住圆角抗锯齿微漏，切换更稳
+        vignette = QRadialGradient(w / 2, h / 2, max(w, h) * 0.62)
+        vignette.setColorAt(0.0, QColor(8, 3, 22, 0))
+        vignette.setColorAt(0.75, QColor(8, 3, 22, 35))
+        vignette.setColorAt(1.0, QColor(8, 3, 22, 110))
+        painter.setBrush(QBrush(vignette))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
+
+        # 3. 边框微光（固定透明度，不随页面淡入跳变）
         border_color = QColor(180, 140, 200, 40)
         painter.setPen(QPen(border_color, 1.5))
         painter.setBrush(Qt.NoBrush)
@@ -982,7 +992,6 @@ class CommemorateWindow(QWidget):
     def resizeEvent(self, event):
         self.win_w = self.width()
         self.win_h = self.height()
-        self._apply_window_mask()
         for page in self.pages:
             page.resize(self.win_w, self.win_h)
         super().resizeEvent(event)
