@@ -230,7 +230,7 @@ class CountdownPage:
         bg.setColorAt(1.0, QColor(40, 15, 55))
         painter.setBrush(QBrush(bg))
         painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
+        painter.drawRect(QRectF(0, 0, w, h))
 
         # ── 2. 星星 ──────────────────────────────────────
         for s in self.stars:
@@ -350,7 +350,7 @@ class ScenePage:
         bg.setColorAt(0.5, QColor(*self.bg_colors[1]))
         bg.setColorAt(1.0, QColor(*self.bg_colors[2]))
         painter.setBrush(QBrush(bg))
-        painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
+        painter.drawRect(QRectF(0, 0, w, h))
         # 场景动画
         self._paint_scene(painter, w, h)
         # 页面名称
@@ -604,7 +604,6 @@ class CommemorateWindow(QWidget):
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
         )
-        self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setMouseTracking(True)
 
@@ -786,17 +785,11 @@ class CommemorateWindow(QWidget):
         painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         w, h = self.win_w, self.win_h
 
-        # 0. 不透明圆角底色（保持圆角平滑）
-        painter.setBrush(QBrush(QColor(8, 3, 22)))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
+        # 0. 不透明底色（直角窗口，内部完全覆盖）
+        painter.fillRect(QRectF(0, 0, w, h), QColor(8, 3, 22))
 
-        # 1. 当前页面内容（裁剪到圆角内，切换时交叉淡入淡出）
+        # 1. 当前页面内容（切换时交叉淡入淡出）
         page = self._current_page()
-        page_clip = QPainterPath()
-        page_clip.addRoundedRect(QRectF(0, 0, w, h), 20, 20)
-        painter.save()
-        painter.setClipPath(page_clip)
         if self._trans_old is not None and self._trans_progress < 1.0:
             p = self._trans_progress
             painter.setOpacity(1.0 - p)
@@ -806,21 +799,11 @@ class CommemorateWindow(QWidget):
             painter.setOpacity(1.0)
         else:
             page.paint(painter, w, h)
-        painter.restore()
 
-        # 2. 柔和暗角：压暗边缘，遮住圆角抗锯齿微漏，切换更稳
-        vignette = QRadialGradient(w / 2, h / 2, max(w, h) * 0.62)
-        vignette.setColorAt(0.0, QColor(8, 3, 22, 0))
-        vignette.setColorAt(0.85, QColor(8, 3, 22, 40))
-        vignette.setColorAt(1.0, QColor(8, 3, 22, 190))
-        painter.setBrush(QBrush(vignette))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
-
-        # 3. 左侧页面目录
+        # 2. 左侧页面目录
         self._paint_sidebar(painter, w, h)
 
-        # 4. 右上角悬浮控制按钮
+        # 3. 右上角悬浮控制按钮
         self._paint_controls(painter, w, h)
 
         painter.end()
