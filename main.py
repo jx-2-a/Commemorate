@@ -16,7 +16,7 @@ from pathlib import Path
 from PyQt5.QtCore import Qt, QTimer, QPointF, QRectF, QEventLoop
 from PyQt5.QtGui import (
     QPainter, QColor, QFont, QRadialGradient, QLinearGradient,
-    QPen, QBrush, QPainterPath, QFontMetrics
+    QPen, QBrush, QPainterPath, QFontMetrics, QCursor
 )
 from PyQt5.QtWidgets import QApplication, QWidget
 
@@ -194,6 +194,12 @@ class CommemorateWindow(QWidget):
         self.fade_in = 0.0
         self.time_displayed = False
 
+        # 右上角悬浮控制按钮（鼠标靠近时渐变浮现）
+        self.controls_opacity = 0.0
+        self.controls_hover = -1
+        self._btn_w, self._btn_h, self._btn_gap = 34, 34, 10
+        self._btn_top, self._btn_right = 14, 16
+
         # 主循环
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -219,6 +225,22 @@ class CommemorateWindow(QWidget):
     def _show_time(self):
         self.time_displayed = True
 
+    def _button_rects(self):
+        """最小化 / 最大化 / 关闭三个按钮的区域（右上角）"""
+        right = self.win_w - self._btn_right
+        close = QRectF(
+            right - self._btn_w, self._btn_top, self._btn_w, self._btn_h
+        )
+        maxi = QRectF(
+            right - self._btn_w * 2 - self._btn_gap,
+            self._btn_top, self._btn_w, self._btn_h,
+        )
+        mini = QRectF(
+            right - self._btn_w * 3 - self._btn_gap * 2,
+            self._btn_top, self._btn_w, self._btn_h,
+        )
+        return (mini, maxi, close)
+
     def refresh_from_config(self):
         """数据同步后刷新纪念信息（远程配置可能已更新）"""
         self._comm_date = self.config.commemorative_date
@@ -236,6 +258,24 @@ class CommemorateWindow(QWidget):
                 h.update(self.frame, self.win_w, self.win_h)
             for f in self.fireflies:
                 f.update(self.frame, self.win_w, self.win_h)
+
+            # 右上角控制按钮：鼠标靠近时渐变浮现，远离时渐变消失
+            mouse_pos = self.mapFromGlobal(QCursor.pos())
+            near = (
+                mouse_pos.x() >= self.win_w - 260
+                and 0 <= mouse_pos.y() <= 120
+            )
+            if near:
+                self.controls_opacity = min(1.0, self.controls_opacity + 0.08)
+            else:
+                self.controls_opacity = max(0.0, self.controls_opacity - 0.06)
+            self.controls_hover = -1
+            if self.controls_opacity > 0.2:
+                for i, r in enumerate(self._button_rects()):
+                    if r.contains(mouse_pos):
+                        self.controls_hover = i
+                        break
+
             self.update()
         except Exception:
             # 动画循环不允许崩溃：记录一次完整堆栈后继续
@@ -342,6 +382,39 @@ class CommemorateWindow(QWidget):
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(QRectF(1, 1, w - 2, h - 2), 19, 19)
 
+        # ── 8. 右上角悬浮控制按钮（鼠标靠近时浮现）────────
+        if self.controls_opacity > 0.02:
+            alpha = int(255 * self.controls_opacity)
+            for i, r in enumerate(self._button_rects()):
+                hover = (i == self.controls_hover)
+                if hover:
+                    if i == 2:
+                        bg = QColor(255, 80, 110, int(alpha * 0.9))
+                    else:
+                        bg = QColor(90, 45, 120, int(alpha * 0.92))
+                else:
+                    bg = QColor(15, 8, 32, int(alpha * 0.72))
+                painter.setPen(QPen(QColor(255, 255, 255, int(alpha * 0.35)), 1))
+                painter.setBrush(QBrush(bg))
+                painter.drawRoundedRect(r, 9, 9)
+
+                pen = QPen(QColor(255, 240, 245, alpha), 2)
+                pen.setCapStyle(Qt.RoundCap)
+                painter.setPen(pen)
+                painter.setBrush(Qt.NoBrush)
+                cx = r.center().x()
+                cy = r.center().y()
+                if i == 0:
+                    # 最小化：横线
+                    painter.drawLine(QPointF(cx - 8, cy), QPointF(cx + 8, cy))
+                elif i == 1:
+                    # 最大化：方框
+                    painter.drawRect(QRectF(cx - 8, cy - 7, 16, 14))
+                else:
+                    # 关闭：叉
+                    painter.drawLine(QPointF(cx - 7, cy - 7), QPointF(cx + 7, cy + 7))
+                    painter.drawLine(QPointF(cx - 7, cy + 7), QPointF(cx + 7, cy - 7))
+
         painter.end()
 
     def _draw_heart(self, painter, x, y, size):
@@ -364,8 +437,30 @@ class CommemorateWindow(QWidget):
             else:
                 self.showFullScreen()
 
-    def mouseDoubleClickEvent(self, event):
-        self._shutdown()
+    def mouseReleaseEvent(self, event):
+        """点击右上角悬浮按钮：最小化 / 最大化 / 关闭"""
+        if self.controls_opacity > 0.4:
+            pos = event.pos()
+            rects = self._button_rects()
+            for i, r in enumerate(rects):
+                if r.contains(pos):
+                    if i == 0:
+                        self.showMinimized()
+                    elif i == 1:
+                        if self.windowState() & Qt.WindowMaximized:
+                            self.showNormal()
+                        else:
+                            self.showMaximized()
+                    else:
+                        self._shutdown()
+                    event.accept()
+                    return
+        super().mouseReleaseEvent(event)
+
+    def resizeEvent(self, event):
+        self.win_w = self.width()
+        self.win_h = self.height()
+        super().resizeEvent(event)
 
     def closeEvent(self, event):
         # 关闭前停止动画定时器，避免窗口销毁后 _tick 继续访问已删除对象
