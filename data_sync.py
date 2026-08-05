@@ -89,6 +89,7 @@ class DataSyncManager(QObject):
         self._done = 0
         self._total = 0
         self._errors = []
+        self._warnings = []
 
     # ---------- 公开入口 ----------
 
@@ -104,6 +105,7 @@ class DataSyncManager(QObject):
         self._total = len(self._queue)
         self._done = 0
         self._errors = []
+        self._warnings = []
         # 用 0 延时保证信号在事件循环启动后再发出
         QTimer.singleShot(0, self._begin)
 
@@ -170,7 +172,9 @@ class DataSyncManager(QObject):
                     self.config.data_dir, self._queue, remote_shas
                 )
                 for path in missing:
-                    self._errors.append(f"远程不存在: {path}")
+                    # 远程缺少的文件只警告、不阻断同步（老版本文件列表可能包含
+                    # 已废弃文件，如 version.json / data.csv）
+                    self._warnings.append(f"远程不存在（已跳过）: {path}")
                 self._queue = changed
                 self._total = len(changed)
                 self._done = 0
@@ -361,6 +365,10 @@ class DataSyncManager(QObject):
     def errors(self):
         return list(self._errors)
 
+    @property
+    def warnings(self):
+        return list(self._warnings)
+
 
 class SyncWorker(QObject):
     """后台线程执行的登录前同步 + 静默版本检查"""
@@ -396,14 +404,14 @@ class SyncWorker(QObject):
                 loop.quit()
 
             watchdog.timeout.connect(on_watchdog)
-            watchdog.start(60000)
+            watchdog.start(15000)
             mgr.sync_done.connect(loop.quit)
             mgr.pull()
             loop.exec_()
             watchdog.stop()
 
             if timeout_hit["v"]:
-                mgr._errors.append("同步超时（60 秒未完成），请检查网络后重试")
+                mgr._errors.append("同步超时（15 秒未完成），请检查网络后重试")
 
             result = {
                 "success": not mgr.errors,

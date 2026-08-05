@@ -1,7 +1,7 @@
 {
     "app": {
         "name": "Commemorate",
-        "version": "1.1.9"
+        "version": "1.2.0"
     },
     "update": {
         "auto_check": true,
@@ -16,11 +16,10 @@
         "use_api": true,
         "files": [
             "config.json",
-            "data.csv",
-            "rules.txt"
+            "rules.txt",
+            "TimerPageWords.csv"
         ],
         "push_files": [
-            "data.csv",
             "rules.txt"
         ],
         "auto_pull": true,

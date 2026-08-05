@@ -128,6 +128,35 @@ class Firefly:
 #  CommemorateWindow — 纪念动画主窗口（从 config 读取信息）
 # ============================================================
 
+MESSAGE_CSV_NAME = "TimerPageWords.csv"
+
+
+def _load_random_message(config) -> str:
+    """从计时页语 CSV 中随机选取一行话语（找不到文件时返回空串）"""
+    candidates = []
+    candidates.append(config.data_dir / MESSAGE_CSV_NAME)
+    if getattr(sys, "frozen", False):
+        meipass = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        candidates.append(meipass / MESSAGE_CSV_NAME)
+    candidates.append(Path(__file__).resolve().parent / MESSAGE_CSV_NAME)
+
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8-sig")
+        except Exception:
+            continue
+        messages = []
+        for line in text.splitlines():
+            line = line.strip().strip('"').strip("'").strip()
+            if line and not line.startswith("#"):
+                messages.append(line)
+        if messages:
+            return random.choice(messages)
+    return ""
+
+
 class CommemorateWindow(QWidget):
     """纪念动画主窗口"""
 
@@ -138,8 +167,7 @@ class CommemorateWindow(QWidget):
         # 从配置读取纪念信息
         self._comm_date = config.commemorative_date
         self._comm_time = config.commemorative_time
-        self._comm_title = config.commemorative_title
-        self._comm_subtitle = config.commemorative_subtitle
+        self._comm_message = _load_random_message(config)
 
         self.setWindowTitle(f"💖 {config.app_name}")
         self.setWindowFlags(
@@ -166,14 +194,6 @@ class CommemorateWindow(QWidget):
         self.fade_in = 0.0
         self.time_displayed = False
 
-        # 计算距离天数
-        try:
-            past = datetime.strptime(f"{self._comm_date} {self._comm_time}", "%Y-%m-%d %H:%M")
-            now = datetime.now()
-            self.days_passed = (now - past).days
-        except ValueError:
-            self.days_passed = 0
-
         # 主循环
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -182,6 +202,20 @@ class CommemorateWindow(QWidget):
         # 3 秒后显示时间
         QTimer.singleShot(2500, self._show_time)
 
+    def _elapsed_dhm(self) -> str:
+        """从开始时间到现在的间隔，格式：1877D 05H 32M"""
+        try:
+            past = datetime.strptime(
+                f"{self._comm_date} {self._comm_time}", "%Y-%m-%d %H:%M"
+            )
+            elapsed = datetime.now() - past
+            days = max(0, elapsed.days)
+            hours = max(0, elapsed.seconds // 3600)
+            minutes = max(0, (elapsed.seconds % 3600) // 60)
+            return f"{days}D {hours:02d}H {minutes:02d}M"
+        except ValueError:
+            return "0D 00H 00M"
+
     def _show_time(self):
         self.time_displayed = True
 
@@ -189,13 +223,6 @@ class CommemorateWindow(QWidget):
         """数据同步后刷新纪念信息（远程配置可能已更新）"""
         self._comm_date = self.config.commemorative_date
         self._comm_time = self.config.commemorative_time
-        self._comm_title = self.config.commemorative_title
-        self._comm_subtitle = self.config.commemorative_subtitle
-        try:
-            past = datetime.strptime(f"{self._comm_date} {self._comm_time}", "%Y-%m-%d %H:%M")
-            self.days_passed = (datetime.now() - past).days
-        except ValueError:
-            self.days_passed = 0
         self.update()
 
     def _tick(self):
@@ -264,41 +291,33 @@ class CommemorateWindow(QWidget):
             painter.setPen(Qt.NoPen)
             self._draw_heart(painter, hh.x, hh.y, hh.size)
 
-        # ── 5. 中央发光文字 ──────────────────────────────
+        # ── 5. 中央：DHM 计时 + 随机话语 ──
         title_alpha = int(255 * self.fade_in)
         if title_alpha > 5:
-            cx, cy = w / 2, h / 2 - 40
-            for layer in range(6):
-                glow_alpha = title_alpha // (layer + 1)
-                glow_size = 40 + layer * 8
-                glow = QRadialGradient(cx, cy, glow_size)
-                gc = QColor(255, 200, 220, glow_alpha)
-                gc0 = QColor(255, 200, 220, 0)
-                glow.setColorAt(0.0, gc)
-                glow.setColorAt(0.5, QColor(255, 160, 190, glow_alpha // 3))
-                glow.setColorAt(1.0, gc0)
-                painter.setBrush(QBrush(glow))
-                painter.setPen(Qt.NoPen)
-                painter.drawEllipse(QPointF(cx, cy), glow_size, glow_size * 0.7)
+            cx = w / 2
+            timer_y = int(h * 0.46)
+            msg_y = timer_y + 90
 
-            # 主标题
-            title_font = QFont("Microsoft YaHei", 42, QFont.Bold)
-            painter.setFont(title_font)
-            painter.setPen(QColor(255, 240, 245, title_alpha))
-            fm = QFontMetrics(title_font)
-            tw = fm.horizontalAdvance(self._comm_title)
-            painter.drawText(int(cx - tw / 2), int(cy - 30), self._comm_title)
+            # DHM 计时（大号字，格式：1877D 05H 32M）
+            timer_text = self._elapsed_dhm()
+            timer_font = QFont("Microsoft YaHei", 50, QFont.Bold)
+            painter.setFont(timer_font)
+            painter.setPen(QColor(255, 235, 245, title_alpha))
+            fm = QFontMetrics(timer_font)
+            tw = fm.horizontalAdvance(timer_text)
+            painter.drawText(int(cx - tw / 2), timer_y, timer_text)
 
-            # 副标题
-            sub_font = QFont("Microsoft YaHei", 16)
-            sub_font.setItalic(True)
-            painter.setFont(sub_font)
-            painter.setPen(QColor(255, 210, 230, int(title_alpha * 0.85)))
-            fm2 = QFontMetrics(sub_font)
-            sw = fm2.horizontalAdvance(self._comm_subtitle)
-            painter.drawText(int(cx - sw / 2), int(cy + 10), self._comm_subtitle)
+            # 随机话语（计时下方，一行略小的字）
+            if self._comm_message:
+                msg_font = QFont("Microsoft YaHei", 20)
+                msg_font.setItalic(True)
+                painter.setFont(msg_font)
+                painter.setPen(QColor(235, 205, 235, int(title_alpha * 0.9)))
+                fm2 = QFontMetrics(msg_font)
+                mw = fm2.horizontalAdvance(self._comm_message)
+                painter.drawText(int(cx - mw / 2), msg_y, self._comm_message)
 
-        # ── 6. 底部日期 & 计时 ────────────────────────────
+        # ── 6. 底部日期 ──────────────────────────────────
         if self.time_displayed:
             bottom_alpha = min(1.0, (self.frame - 150) / 80.0)
             if bottom_alpha > 0.05:
@@ -307,13 +326,10 @@ class CommemorateWindow(QWidget):
                 painter.setFont(bottom_font)
                 painter.setPen(QColor(220, 200, 230, alpha))
 
-                date_str = f"{self._comm_date}  {self._comm_time}"
-                days_str = f"从那天起，已是第 {self.days_passed} 天"
+                date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 fm3 = QFontMetrics(bottom_font)
                 dw = fm3.horizontalAdvance(date_str)
-                dw2 = fm3.horizontalAdvance(days_str)
                 painter.drawText(int(cx - dw / 2), h - 90, date_str)
-                painter.drawText(int(cx - dw2 / 2), h - 65, days_str)
 
                 # 装饰线
                 painter.setPen(QPen(QColor(180, 140, 200, alpha), 1))
@@ -563,14 +579,18 @@ if __name__ == "__main__":
     login.login_ok.connect(on_login_ok)
 
     # ---- 后台线程同步（不阻塞 UI） ----
-    if config.sync_auto_pull and "--skip-sync" not in args:
+    debug_mode = "--debug" in args
+    if debug_mode:
+        # 调试模式：跳过登录与同步，直接进入主窗口
+        finalize_sync({"success": True, "sync_errors": [], "preflight": None})
+    elif config.sync_auto_pull and "--skip-sync" not in args:
         start_sync_thread()
     else:
         # 跳过同步：使用本地缓存，直接视为同步成功
         finalize_sync({"success": True, "sync_errors": [], "preflight": None})
 
     # ---- 登录（必须等待同步成功；同步期间按钮禁用） ----
-    if login.exec_() != LoginWindow.Accepted:
+    if not debug_mode and login.exec_() != LoginWindow.Accepted:
         stop_sync_thread()
         window._shutdown()
         sys.exit(0)

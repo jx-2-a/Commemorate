@@ -176,8 +176,8 @@ class ConfigManager:
                 "repo_name": "my-app-data",
                 "branch": "main",
                 "use_api": True,
-                "files": ["config.json", "data.csv", "rules.txt"],
-                "push_files": ["data.csv", "rules.txt"],
+                "files": ["config.json", "rules.txt", "TimerPageWords.csv"],
+                "push_files": ["rules.txt"],
                 "auto_pull": True,
                 "push_token_env": "GITHUB_TOKEN"
             },
@@ -260,7 +260,7 @@ class ConfigManager:
     @property
     def sync_files(self):
         return self._data.get("sync", {}).get(
-            "files", ["config.json", "data.csv", "rules.txt"]
+            "files", ["config.json", "rules.txt", "TimerPageWords.csv"]
         )
 
     @property

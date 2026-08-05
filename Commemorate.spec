@@ -7,6 +7,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('config.json', '.'),
+        ('TimerPageWords.csv', '.'),
     ],
     hiddenimports=['PyQt5.QtNetwork'],
     hookspath=[],
