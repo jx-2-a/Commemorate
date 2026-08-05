@@ -412,9 +412,13 @@ class CommemorateWindow(QWidget):
                         Qt.WindowMaximized | Qt.WindowFullScreen
                     )
                     if maxed:
-                        # 已最大化/全屏：显示“还原”图标（两个重叠方框）
-                        painter.drawRect(QRectF(cx - 10, cy - 9, 13, 11))
-                        painter.drawRect(QRectF(cx - 4, cy - 2, 14, 12))
+                        # 已最大化/全屏：显示“还原”图标（两个相同方框错开，
+                        # 上方的方框用底色遮住下方的）
+                        painter.setBrush(Qt.NoBrush)
+                        painter.drawRect(QRectF(cx - 4, cy - 2, 16, 14))
+                        painter.setBrush(QBrush(bg))
+                        painter.drawRect(QRectF(cx - 11, cy - 10, 16, 14))
+                        painter.setBrush(Qt.NoBrush)
                     else:
                         # 最大化：单个方框
                         painter.drawRect(QRectF(cx - 8, cy - 7, 16, 14))
@@ -468,8 +472,14 @@ class CommemorateWindow(QWidget):
         super().mouseReleaseEvent(event)
 
     def resizeEvent(self, event):
+        old_w, old_h = self.win_w, self.win_h
         self.win_w = self.width()
         self.win_h = self.height()
+        if hasattr(self, "stars") and (self.win_w, self.win_h) != (old_w, old_h):
+            # 全屏/最大化后重新铺开粒子，避免星星只集中在左上角
+            self.stars = [Star(self.win_w, self.win_h) for _ in range(120)]
+            self.hearts = [Heart(self.win_w, self.win_h) for _ in range(45)]
+            self.fireflies = [Firefly(self.win_w, self.win_h) for _ in range(18)]
         super().resizeEvent(event)
 
     def closeEvent(self, event):
