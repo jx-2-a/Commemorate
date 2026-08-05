@@ -811,8 +811,8 @@ class CommemorateWindow(QWidget):
         # 2. 柔和暗角：压暗边缘，遮住圆角抗锯齿微漏，切换更稳
         vignette = QRadialGradient(w / 2, h / 2, max(w, h) * 0.62)
         vignette.setColorAt(0.0, QColor(8, 3, 22, 0))
-        vignette.setColorAt(0.75, QColor(8, 3, 22, 35))
-        vignette.setColorAt(1.0, QColor(8, 3, 22, 110))
+        vignette.setColorAt(0.85, QColor(8, 3, 22, 40))
+        vignette.setColorAt(1.0, QColor(8, 3, 22, 190))
         painter.setBrush(QBrush(vignette))
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
