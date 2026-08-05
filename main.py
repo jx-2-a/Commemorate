@@ -417,7 +417,7 @@ class CommemorateWindow(QWidget):
                         painter.setBrush(Qt.NoBrush)
                         painter.drawRect(QRectF(cx - 4, cy - 2, 16, 14))
                         painter.setBrush(QBrush(bg))
-                        painter.drawRect(QRectF(cx - 11, cy - 10, 16, 14))
+                        painter.drawRect(QRectF(cx - 9, cy - 8, 16, 14))
                         painter.setBrush(Qt.NoBrush)
                     else:
                         # 最大化：单个方框
