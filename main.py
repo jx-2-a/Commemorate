@@ -394,7 +394,7 @@ class CommemorateWindow(QWidget):
                         bg = QColor(90, 45, 120, int(alpha * 0.92))
                 else:
                     bg = QColor(15, 8, 32, int(alpha * 0.72))
-                painter.setPen(QPen(QColor(255, 255, 255, int(alpha * 0.35)), 1))
+                painter.setPen(Qt.NoPen)
                 painter.setBrush(QBrush(bg))
                 painter.drawRoundedRect(r, 9, 9)
 
@@ -408,8 +408,16 @@ class CommemorateWindow(QWidget):
                     # 最小化：横线
                     painter.drawLine(QPointF(cx - 8, cy), QPointF(cx + 8, cy))
                 elif i == 1:
-                    # 最大化：方框
-                    painter.drawRect(QRectF(cx - 8, cy - 7, 16, 14))
+                    maxed = self.windowState() & (
+                        Qt.WindowMaximized | Qt.WindowFullScreen
+                    )
+                    if maxed:
+                        # 已最大化/全屏：显示“还原”图标（两个重叠方框）
+                        painter.drawRect(QRectF(cx - 9, cy - 8, 11, 9))
+                        painter.drawRect(QRectF(cx - 2, cy - 1, 11, 9))
+                    else:
+                        # 最大化：单个方框
+                        painter.drawRect(QRectF(cx - 8, cy - 7, 16, 14))
                 else:
                     # 关闭：叉
                     painter.drawLine(QPointF(cx - 7, cy - 7), QPointF(cx + 7, cy + 7))
@@ -447,7 +455,9 @@ class CommemorateWindow(QWidget):
                     if i == 0:
                         self.showMinimized()
                     elif i == 1:
-                        if self.windowState() & Qt.WindowMaximized:
+                        if self.windowState() & (
+                            Qt.WindowMaximized | Qt.WindowFullScreen
+                        ):
                             self.showNormal()
                         else:
                             self.showMaximized()
