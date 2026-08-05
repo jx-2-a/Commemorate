@@ -791,16 +791,14 @@ class CommemorateWindow(QWidget):
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
 
-        # 1. 当前页面内容（切换时先淡出旧页到深色底，再淡入新页）
+        # 1. 当前页面内容（切换时交叉淡入淡出）
         page = self._current_page()
         if self._trans_old is not None and self._trans_progress < 1.0:
             p = self._trans_progress
-            if p < 0.5:
-                painter.setOpacity(1.0 - p * 2)
-                self._trans_old.paint(painter, w, h)
-            else:
-                painter.setOpacity((p - 0.5) * 2)
-                page.paint(painter, w, h)
+            painter.setOpacity(1.0 - p)
+            self._trans_old.paint(painter, w, h)
+            painter.setOpacity(p)
+            page.paint(painter, w, h)
             painter.setOpacity(1.0)
         else:
             page.paint(painter, w, h)
