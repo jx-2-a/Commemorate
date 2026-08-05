@@ -403,44 +403,24 @@ class CommemorateWindow(QWidget):
         return (mini, maxi, close)
 
     def _sidebar_layout(self):
-        """左侧页面目录：长弧布局，最多 5 项，当前页恒在中间（slot 2）
+        """左侧页面目录：纵向列表，最多 5 项，当前页恒在中间（slot 2）
 
-        弧长约为窗口高度的 3/4，几乎直线、中间略微向右突起。
-        返回 [(页面索引, slot, x, y)]；slot 0..4 对应弧从上到下。
+        返回 [(页面索引, slot, x, y)]；slot 0..4 对应列表从上到下。
         """
         n = len(self.pages)
         if n == 0:
             return []
-        x0 = 16
-        depth = 8
+        x0 = 22
         y0 = self.win_h * 0.125
         y1 = self.win_h * 0.875
         out = []
         for idx in range(max(0, self.current_index - 2), min(n, self.current_index + 3)):
             slot = idx - self.current_index + 2
             t = slot / 4
-            x = x0 + depth * math.sin(t * math.pi)
+            x = x0
             y = y0 + t * (y1 - y0)
             out.append((idx, slot, x, y))
         return out
-
-    def _sidebar_arc_path(self):
-        """侧边装饰弧线：弧长约 3/4 窗口高，几乎直线、中间略微右突"""
-        x0 = 16
-        depth = 8
-        y0 = self.win_h * 0.125
-        y1 = self.win_h * 0.875
-        path = QPainterPath()
-        steps = 48
-        for i in range(steps + 1):
-            t = i / steps
-            x = x0 + depth * math.sin(t * math.pi)
-            y = y0 + t * (y1 - y0)
-            if i == 0:
-                path.moveTo(x, y)
-            else:
-                path.lineTo(x, y)
-        return path
 
     def _tick(self):
         try:
@@ -515,13 +495,6 @@ class CommemorateWindow(QWidget):
             return
         alpha = int(255 * self.sidebar_opacity)
 
-        # 半圆弧装饰线（比字体略浅，透明度更高）
-        arc_pen = QPen(QColor(240, 238, 245, int(alpha * 0.32)), 2)
-        arc_pen.setCapStyle(Qt.RoundCap)
-        painter.setPen(arc_pen)
-        painter.setBrush(Qt.NoBrush)
-        painter.drawPath(self._sidebar_arc_path())
-
         for idx, slot, x, y in self._sidebar_layout():
             current = (idx == self.current_index)
             hover = (idx == self.sidebar_hover)
@@ -533,16 +506,19 @@ class CommemorateWindow(QWidget):
                 color = QColor(208, 208, 218, int(alpha * 0.62))
             if hover and not current:
                 color = QColor(235, 230, 240, int(alpha * 0.85))
+            # 左侧短竖线（类似对话消息左侧的短线样式）
+            line_color = (
+                QColor(255, 175, 210, int(alpha * 0.9))
+                if current
+                else QColor(208, 203, 218, int(alpha * 0.5))
+            )
+            painter.setPen(QPen(line_color, 2))
+            painter.drawLine(QPointF(x - 12, y + 2), QPointF(x - 12, y + 18))
             painter.setFont(font)
             text = self.pages[idx].name
-            # 标签左侧与弧线对齐
+            # 标签左对齐，短竖线在其左侧
             painter.setPen(color)
             painter.drawText(int(x), int(y), text)
-            # 当前页在弧线上加一个小亮点
-            if current:
-                painter.setPen(Qt.NoPen)
-                painter.setBrush(QBrush(QColor(255, 170, 210, alpha)))
-                painter.drawEllipse(QPointF(x, y + 2), 3, 3)
 
     def _paint_controls(self, painter, w, h):
         if self.controls_opacity <= 0.02:
