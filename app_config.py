@@ -176,7 +176,8 @@ class ConfigManager:
                 "repo_name": "my-app-data",
                 "branch": "main",
                 "use_api": True,
-                "files": ["config.json", "rules.txt", "TimerPageWords.csv"],
+                "files": ["config.json", "rules.txt", "TimerPageWords.csv",
+                          "sync_tag.txt"],
                 "push_files": ["rules.txt"],
                 "auto_pull": True,
                 "push_token_env": "GITHUB_TOKEN"
@@ -260,7 +261,8 @@ class ConfigManager:
     @property
     def sync_files(self):
         return self._data.get("sync", {}).get(
-            "files", ["config.json", "rules.txt", "TimerPageWords.csv"]
+            "files", ["config.json", "rules.txt", "TimerPageWords.csv",
+                      "sync_tag.txt"]
         )
 
     @property
@@ -332,6 +334,29 @@ class ConfigManager:
     @property
     def commemorative_subtitle(self):
         return self._data.get("commemorate", {}).get("subtitle", "是我一生中最美丽的意外")
+
+    @property
+    def anniversaries_path(self):
+        """纪念日清单（参与远程同步）"""
+        return self.anniversary_dir / "anniversaries.json"
+
+    @property
+    def anniversary_records_path(self):
+        """纪念日记录包（本地加密 zip 备份）"""
+        return self.local_dir / "anniversary_backup.zip"
+
+    @property
+    def anniversary_dir(self):
+        """远程纪念日内容根目录（remote/anniversary/，随仓库同步）"""
+        d = self.data_dir / "anniversary"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @property
+    def anniversary_zip_password(self) -> str:
+        """本地纪念日加密 zip 的密码（可改默认值或远程配置覆盖）"""
+        return self._data.get("anniversary", {}).get(
+            "zip_password", "commemorate2026")
 
     @property
     def remembered_username(self):

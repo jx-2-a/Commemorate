@@ -13,7 +13,10 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from PyQt5.QtCore import Qt, QTimer, QPointF, QRectF, QEventLoop
+from PyQt5.QtCore import (
+    Qt, QTimer, QPointF, QRectF, QEventLoop, QThread, QObject,
+    pyqtSignal, pyqtSlot,
+)
 from PyQt5.QtGui import (
     QPainter, QColor, QFont, QRadialGradient, QLinearGradient,
     QPen, QBrush, QPainterPath, QFontMetrics, QCursor
@@ -415,7 +418,7 @@ class GalleryPage(ScenePage):
 class MusicPage(ScenePage):
     """同心圆波纹场景"""
 
-    name = "Music"
+    name = ""   # 暂时置空，以后再更新
     bg_colors = ((24, 4, 30), (46, 12, 52), (74, 26, 70))
     accent = (255, 150, 220)
 
@@ -457,7 +460,7 @@ class MusicPage(ScenePage):
 class NotesPage(ScenePage):
     """流动颜料场景"""
 
-    name = "Notes"
+    name = ""   # 暂时置空，以后再更新
     bg_colors = ((4, 24, 18), (10, 42, 34), (20, 66, 50))
     accent = (120, 230, 180)
 
@@ -502,7 +505,7 @@ class NotesPage(ScenePage):
 class SettingsPage(ScenePage):
     """极光波浪场景"""
 
-    name = "Settings"
+    name = ""   # 暂时置空，以后再更新
     bg_colors = ((10, 10, 30), (20, 24, 52), (36, 44, 80))
     accent = (170, 160, 255)
 
@@ -543,7 +546,7 @@ class SettingsPage(ScenePage):
 class DiaryPage(ScenePage):
     """暖色余烬飘升场景"""
 
-    name = "Diary"
+    name = ""   # 暂时置空，以后再更新
     bg_colors = ((30, 12, 6), (56, 24, 12), (86, 42, 22))
     accent = (255, 190, 130)
 
@@ -577,11 +580,15 @@ class DiaryPage(ScenePage):
             painter.drawEllipse(QPointF(p["x"], p["y"]), p["size"], p["size"])
 
 
+# 第二个页面：纪念日记录（独立文件实现，含农历换算 / 时间线 / 上传）
+from anniversary_page import AnniversaryRecordsPage
+
+
 # 页面注册表：以后新增功能页时，把页面类加进这个列表即可。
 # 目前除 Countdown 外均为测试用占位页，便于验证多页面目录。
 PAGE_CLASSES = [
     CountdownPage,
-    GalleryPage,
+    AnniversaryRecordsPage,
     MusicPage,
     NotesPage,
     SettingsPage,
@@ -595,6 +602,9 @@ class CommemorateWindow(QWidget):
     def __init__(self, config: ConfigManager):
         super().__init__()
         self.config = config
+        self.current_user = "我"
+        self._push_threads = []
+        self._close_waited_at = 0
         self.pages = [cls(config) for cls in PAGE_CLASSES]
         self.current_index = 0
         self._page_fade = 1.0
@@ -617,6 +627,10 @@ class CommemorateWindow(QWidget):
         self.move((screen.width() - self.win_w) // 2, (screen.height() - self.win_h) // 2)
         for page in self.pages:
             page.resize(self.win_w, self.win_h)
+            if hasattr(page, "set_host"):
+                page.set_host(self)
+            if hasattr(page, "set_push_callback"):
+                page.set_push_callback(self.request_data_push)
 
         self.frame = 0
 
@@ -661,7 +675,10 @@ class CommemorateWindow(QWidget):
         n = len(self.pages)
         if not (0 <= idx < n) or idx == self.current_index:
             return
-        self._trans_old = self._current_page()
+        old_page = self._current_page()
+        if hasattr(old_page, "_back_to_timeline"):
+            old_page._back_to_timeline()  # 切页时退回时间线模式
+        self._trans_old = old_page
         self.current_index = idx
         self._page_fade = 0.0
         self._current_page().show_time()
@@ -673,6 +690,74 @@ class CommemorateWindow(QWidget):
             if hasattr(page, "refresh"):
                 page.refresh()
         self.update()
+
+    def set_current_user(self, username):
+        """登录成功后把当前用户（优先显示名）传给各页面，用于记录“上传用户”"""
+        display = username or "我"
+        for u in self.config.all_users():
+            if u.get("username") == username:
+                display = u.get("display_name") or username
+                break
+        self.current_user = display
+        for page in self.pages:
+            if hasattr(page, "set_current_user"):
+                page.set_current_user(display)
+
+    def request_data_push(self, files, done_cb=None):
+        """后台推送纪念日数据 / 附件到同步仓库（不阻塞界面）"""
+        if not files:
+            if done_cb:
+                done_cb([])
+            return
+        from data_sync import DataSyncManager, run_sync, refresh_sync_tag, SYNC_TAG_FILE
+
+        files = list(files)
+        # 推送前刷新快速同步标签（远程内容一旦变化，其他设备就能感知）
+        try:
+            refresh_sync_tag(self.config)
+            if SYNC_TAG_FILE not in files:
+                files.append(SYNC_TAG_FILE)
+        except Exception:
+            pass
+
+        class _PushWorker(QObject):
+            finished = pyqtSignal(list)
+
+            def __init__(self, cfg_files):
+                super().__init__()
+                self._files = cfg_files
+
+            @pyqtSlot()
+            def run(self):
+                try:
+                    from app_config import ConfigManager
+                    cfg = ConfigManager("config.json")
+                    mgr = DataSyncManager(cfg)
+                    done, errors = run_sync(mgr, "push", files=self._files,
+                                            show_progress=False)
+                    self.finished.emit(list(errors))
+                except Exception as e:
+                    self.finished.emit([str(e)])
+
+        t = QThread(self)
+        w = _PushWorker(files)
+        w.moveToThread(t)
+        t.started.connect(w.run)
+        w.finished.connect(self._on_push_done)
+        w.finished.connect(t.quit)
+        t.finished.connect(w.deleteLater)
+        t.finished.connect(t.deleteLater)
+        self._push_threads.append((t, w, done_cb))
+        t.start()
+
+    def _on_push_done(self, errors):
+        sender = self.sender()
+        for i, (thread, worker, cb) in enumerate(self._push_threads):
+            if worker is sender:
+                self._push_threads.pop(i)
+                if cb:
+                    cb(list(errors))
+                break
 
     def _button_rects(self):
         """最小化 / 最大化 / 关闭三个按钮的区域（右上角）"""
@@ -846,57 +931,64 @@ class CommemorateWindow(QWidget):
                 )
 
     def _paint_controls(self, painter, w, h):
+        """右上角控制按钮：与右下角同风格（无背景图标，悬停变大变亮）；
+        仅“关闭”在悬停时保留红色背景"""
         if self.controls_opacity <= 0.02:
             return
         alpha = int(255 * self.controls_opacity)
         for i, r in enumerate(self._button_rects()):
             hover = (i == self.controls_hover)
-            if hover:
-                if i == 2:
-                    bg = QColor(255, 80, 110, int(alpha * 0.9))
-                else:
-                    bg = QColor(90, 45, 120, int(alpha * 0.92))
-            else:
-                bg = QColor(15, 8, 32, int(alpha * 0.72))
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(bg))
-            painter.drawRoundedRect(r, 9, 9)
-
-            pen = QPen(QColor(255, 240, 245, alpha), 2)
+            scale = 1.18 if hover else 1.0
+            # 仅关闭按钮悬停时画红色背景
+            if hover and i == 2:
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(QColor(255, 80, 110, int(alpha * 0.92))))
+                painter.drawRoundedRect(r, 9, 9)
+            # 图标：无背景，悬停变大变亮
+            icol = QColor(255, 240, 245,
+                          min(255, int(alpha * 1.25)) if hover else alpha)
+            pen = QPen(icol, 2 * scale if hover else 2)
             pen.setCapStyle(Qt.RoundCap)
             painter.setPen(pen)
             painter.setBrush(Qt.NoBrush)
             cx = r.center().x()
             cy = r.center().y()
+            s = scale
             if i == 0:
                 # 最小化：横线
-                painter.drawLine(QPointF(cx - 8, cy), QPointF(cx + 8, cy))
+                painter.drawLine(QPointF(cx - 8 * s, cy), QPointF(cx + 8 * s, cy))
             elif i == 1:
                 maxed = self.windowState() & (
                     Qt.WindowMaximized | Qt.WindowFullScreen
                 )
                 if maxed:
-                    # 已最大化/全屏：显示“还原”图标（两个相同方框错开，
-                    # 上方的方框用底色遮住下方的）
-                    painter.setBrush(Qt.NoBrush)
-                    painter.drawRect(QRectF(cx - 4, cy - 2, 16, 14))
-                    painter.setBrush(QBrush(bg))
-                    painter.drawRect(QRectF(cx - 9, cy - 8, 16, 14))
-                    painter.setBrush(Qt.NoBrush)
+                    # 已最大化/全屏：显示“还原”图标（两个方框错开）
+                    painter.drawRect(QRectF(cx - 4 * s, cy - 2 * s, 16 * s, 14 * s))
+                    painter.drawRect(QRectF(cx - 9 * s, cy - 8 * s, 16 * s, 14 * s))
                 else:
                     # 最大化：单个方框
-                    painter.drawRect(QRectF(cx - 8, cy - 7, 16, 14))
+                    painter.drawRect(QRectF(cx - 8 * s, cy - 7 * s, 16 * s, 14 * s))
             else:
                 # 关闭：叉
-                painter.drawLine(QPointF(cx - 7, cy - 7), QPointF(cx + 7, cy + 7))
-                painter.drawLine(QPointF(cx - 7, cy + 7), QPointF(cx + 7, cy - 7))
+                painter.drawLine(QPointF(cx - 7 * s, cy - 7 * s),
+                                 QPointF(cx + 7 * s, cy + 7 * s))
+                painter.drawLine(QPointF(cx - 7 * s, cy + 7 * s),
+                                 QPointF(cx + 7 * s, cy - 7 * s))
 
     def wheelEvent(self, event):
-        """滚轮切换页面（目录浮现时生效）"""
-        if self.sidebar_opacity > 0.3:
+        """滚轮：左侧目录 → 切换页面；纪念日页 → 切换纪念日 / 滚动时间线"""
+        pos = event.pos()
+        # 鼠标在左侧目录区域时，保留原有“切换页面”行为
+        if self.sidebar_opacity > 0.3 and pos.x() <= 110:
             dy = event.angleDelta().y()
             if dy:
                 self._switch_page(1 if dy < 0 else -1)
+                event.accept()
+                return
+        page = self._current_page()
+        if hasattr(page, "on_wheel"):
+            ad = event.angleDelta()
+            if page.on_wheel(ad.x(), ad.y(), pos):
                 event.accept()
                 return
         super().wheelEvent(event)
@@ -911,6 +1003,10 @@ class CommemorateWindow(QWidget):
             self._drag_active = True
             self._drag_acc = 0.0
             self._drag_last_y = event.pos().y()
+            event.accept()
+            return
+        page = self._current_page()
+        if hasattr(page, "on_press") and page.on_press(event.pos(), event.button()):
             event.accept()
             return
         super().mousePressEvent(event)
@@ -929,6 +1025,12 @@ class CommemorateWindow(QWidget):
                 self._drag_acc += threshold
             event.accept()
             return
+        page = self._current_page()
+        if hasattr(page, "on_move") and page.on_move(event.pos(), event.buttons()):
+            event.accept()
+            return
+        if hasattr(page, "_update_hover"):
+            page._update_hover(event.pos())
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -961,7 +1063,20 @@ class CommemorateWindow(QWidget):
                             self._shutdown()
                         event.accept()
                         return
+            page = self._current_page()
+            if hasattr(page, "on_release") and page.on_release(pos, event.button()):
+                event.accept()
+                return
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        """双击路由给页面（纪念日页：双击内容块用默认程序打开）"""
+        page = self._current_page()
+        if hasattr(page, "on_double_click") and page.on_double_click(
+                event.pos(), event.button()):
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
     def resizeEvent(self, event):
         self.win_w = self.width()
@@ -971,6 +1086,10 @@ class CommemorateWindow(QWidget):
         super().resizeEvent(event)
 
     def keyPressEvent(self, event):
+        page = self._current_page()
+        if hasattr(page, "on_key") and page.on_key(event.key()):
+            event.accept()
+            return
         if event.key() in (Qt.Key_Escape, Qt.Key_Q):
             self._shutdown()
         elif event.key() == Qt.Key_F:
@@ -982,16 +1101,46 @@ class CommemorateWindow(QWidget):
     def closeEvent(self, event):
         # 关闭前停止动画定时器，避免窗口销毁后 _tick 继续访问已删除对象
         self.timer.stop()
+        page = self._current_page()
+        if hasattr(page, "_stop_audio"):
+            page._stop_audio()
+        if hasattr(page, "_back_to_timeline"):
+            page._back_to_timeline()
+        if hasattr(page, "_on_app_close"):
+            page._on_app_close()   # 退出前：回写加密 zip + 清理临时目录
+        # 若有后台推送尚未完成：隐藏窗口，等推送全部结束后再退出
+        if self._push_threads:
+            event.ignore()
+            self.hide()
+            self._close_waited_at = 0
+            self._wait_push_and_quit()
+            return
         super().closeEvent(event)
+        page = self._current_page()
+        if hasattr(page, "delete_workspace"):
+            page.delete_workspace()   # 无待推送时直接删除解密目录
+        self._quit_app()
+
+    def _quit_app(self):
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
+
+    def _wait_push_and_quit(self):
+        self._close_waited_at += 1
+        # 最多等约 120 秒；正常推送（含大附件）远快于此
+        if not self._push_threads or self._close_waited_at > 600:
+            page = self._current_page()
+            if hasattr(page, "delete_workspace"):
+                page.delete_workspace()   # 推送完成后删除解密目录
+            self._quit_app()
+            return
+        QTimer.singleShot(200, self._wait_push_and_quit)
 
     def _shutdown(self):
         self.timer.stop()
         self.close()
-        # 主窗口带 Qt.Tool 标志，Qt 不会因“最后一个窗口关闭”自动退出，
-        # 这里显式退出事件循环
-        app = QApplication.instance()
-        if app is not None:
-            app.quit()
+        # 退出交给 closeEvent：推送完成后自动 app.quit()
 
 
 # ============================================================
@@ -1000,7 +1149,11 @@ class CommemorateWindow(QWidget):
 
 if __name__ == "__main__":
     # 静音 Qt 网络监控的无害警告（Windows 虚拟网卡 / VPN 环境常见）
-    os.environ.setdefault("QT_LOGGING_RULES", "qt.network.monitor=false")
+    # 同时静音 QtMultimedia / DirectShow 的渲染报错（如 MKV 缺解码器），
+    # 播放失败会走应用内回退（提示 + 默认程序打开），不会影响功能
+    os.environ.setdefault(
+        "QT_LOGGING_RULES",
+        "qt.network.monitor=false;qt.multimedia.*=false")
 
     _install_excepthook()
 
@@ -1209,6 +1362,8 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # ---- 主窗口正式显示 ----
+    if not debug_mode:
+        window.set_current_user(login.username())
     window.refresh_from_config()
     window.show()
     window.raise_()

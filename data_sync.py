@@ -8,9 +8,12 @@ import base64
 import hashlib
 import json
 import os
+import uuid
 from pathlib import Path
 
-from PyQt5.QtCore import QObject, QTimer, QUrl, pyqtSignal, pyqtSlot, QEventLoop, Qt
+from PyQt5.QtCore import (
+    QObject, QTimer, QUrl, pyqtSignal, pyqtSlot, QEventLoop, Qt, QByteArray,
+)
 from PyQt5.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from PyQt5.QtWidgets import QProgressDialog
 
@@ -19,6 +22,36 @@ from app_config import ConfigManager
 RAW_BASE = "https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
 API_BASE = "https://api.github.com/repos/{owner}/{repo}/contents/{path}"
 GIT_TREE_URL = "https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
+SYNC_TAG_FILE = "sync_tag.txt"
+
+
+def refresh_sync_tag(config):
+    """推送前刷新快速同步标签：写入本地镜像与本地记录，返回新标签"""
+    tag = uuid.uuid4().hex
+    try:
+        (config.data_dir / SYNC_TAG_FILE).write_text(tag, encoding="utf-8")
+    except Exception:
+        pass
+    try:
+        (config.local_dir / SYNC_TAG_FILE).write_text(tag, encoding="utf-8")
+    except Exception:
+        pass
+    return tag
+
+
+def read_local_tag(config) -> str:
+    try:
+        return (config.local_dir / SYNC_TAG_FILE).read_text(
+            encoding="utf-8").strip()
+    except Exception:
+        return ""
+
+
+def save_local_tag(config, tag: str):
+    try:
+        (config.local_dir / SYNC_TAG_FILE).write_text(tag or "", encoding="utf-8")
+    except Exception:
+        pass
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -99,6 +132,16 @@ class DataSyncManager(QObject):
     def push(self, files=None):
         self._start("push", files or self.config.sync_push_files)
 
+    def delete_files(self, files):
+        """删除远程仓库中的文件（Contents API DELETE，清理不再需要的资源）"""
+        self._mode = "delete"
+        self._queue = list(files)
+        self._total = len(self._queue)
+        self._done = 0
+        self._errors = []
+        self._warnings = []
+        QTimer.singleShot(0, self._next)
+
     def _start(self, mode, files):
         self._mode = mode
         self._queue = list(files)
@@ -112,14 +155,60 @@ class DataSyncManager(QObject):
     def _begin(self):
         if self._mode == "pull":
             self._pull_stage1()
+        elif self._mode == "delete":
+            self._delete_file(self._queue.pop(0))
+        elif self._mode == "push":
+            # 推送前先拿远程哈希清单，只上传真正有变化的文件
+            self._push_stage1()
         else:
+            self._next()
+
+    # ---------- 推送：树清单预检 ----------
+
+    def _push_stage1(self):
+        url = GIT_TREE_URL.format(
+            owner=self.config.sync_repo_owner,
+            repo=self.config.sync_repo_name,
+            branch=self.config.sync_branch,
+        )
+        req = self._request(url, token=self._token(), accept_raw=False,
+                            timeout_ms=60000)
+        reply = self._manager.get(req)
+        reply.finished.connect(lambda r=reply: self._on_push_tree(r))
+
+    def _on_push_tree(self, reply):
+        try:
+            if reply.error() != QNetworkReply.NoError:
+                self._warnings.append(
+                    "获取远程哈希清单失败，回退为逐文件检查推送")
+                return
+            remote_shas = parse_tree_shas(
+                json.loads(reply.readAll().data().decode("utf-8")))
+            changed = []
+            for path in self._queue:
+                src = self.config.data_dir / path
+                if not src.exists():
+                    self._errors.append(f"推送 {path}: 本地文件不存在")
+                    continue
+                if git_blob_sha(src.read_bytes()) != remote_shas.get(path):
+                    changed.append(path)   # 远程缺失或内容不同 → 需要上传
+                else:
+                    self.file_synced.emit(path, False)  # 已一致，跳过
+            self._queue = changed
+            self._total = len(changed)
+            self._done = 0
+        except Exception as e:
+            self._errors.append(f"获取远程哈希清单失败: {e}")
+        finally:
+            reply.deleteLater()
             self._next()
 
     # ---------- 请求构造 ----------
 
-    def _request(self, url: str, token: str = "", accept_raw: bool = True) -> QNetworkRequest:
+    def _request(self, url: str, token: str = "", accept_raw: bool = True,
+                 timeout_ms: int = 60000) -> QNetworkRequest:
         req = QNetworkRequest(QUrl(url))
-        req.setTransferTimeout(10000)
+        req.setTransferTimeout(timeout_ms)
         if "api.github.com" in url:
             if accept_raw:
                 # 拉取：直接拿原始文件内容
@@ -144,6 +233,8 @@ class DataSyncManager(QObject):
         path = self._queue.pop(0)
         if self._mode == "pull":
             self._pull_file(path)
+        elif self._mode == "delete":
+            self._delete_file(path)
         else:
             self._push_file(path)
 
@@ -171,6 +262,15 @@ class DataSyncManager(QObject):
                 changed, missing = filter_changed(
                     self.config.data_dir, self._queue, remote_shas
                 )
+                # 纪念日内容目录 anniversary/（按纪念日+日期分文件夹）：
+                # 远程存在的文件若本地缺失或内容变化，一并拉取（兼容旧 records/ 布局）
+                for path in sorted(
+                        p for p in remote_shas
+                        if p.startswith("anniversary/") or p.startswith("records/")):
+                    local = self.config.data_dir / path
+                    if not local.exists() or git_blob_sha(local.read_bytes()) != remote_shas[path]:
+                        if path not in changed:
+                            changed.append(path)
                 for path in missing:
                     # 远程缺少的文件只警告、不阻断同步（老版本文件列表可能包含
                     # 已废弃文件，如 version.json / data.csv）
@@ -226,7 +326,8 @@ class DataSyncManager(QObject):
             self._next()
             return
         url = file_url(self.config, path)
-        req = self._request(url, token=token, accept_raw=False)
+        req = self._request(url, token=token, accept_raw=False,
+                            timeout_ms=300000)   # 大文件（加密zip）上传需要更久
         reply = self._manager.get(req)
         reply.finished.connect(
             lambda r=reply, p=path, u=url, t=token: self._on_sha(r, p, u, t)
@@ -279,7 +380,8 @@ class DataSyncManager(QObject):
         if sha:
             body["sha"] = sha
 
-        req = self._request(url, token=token, accept_raw=False)
+        req = self._request(url, token=token, accept_raw=False,
+                            timeout_ms=300000)
         req.setHeader(QNetworkRequest.ContentTypeHeader, "application/json")
         put_reply = self._manager.put(req, json.dumps(body).encode("utf-8"))
         put_reply.finished.connect(
@@ -295,6 +397,64 @@ class DataSyncManager(QObject):
                 self.file_synced.emit(path, True)
         except Exception as e:
             self._errors.append(f"推送 {path}: {e}")
+        finally:
+            reply.deleteLater()
+            self._next()
+
+    # ---------- 删除 ----------
+
+    def _delete_file(self, path):
+        token = self._token()
+        if not token:
+            self._errors.append(f"删除 {path}: 未设置 GitHub token")
+            self._next()
+            return
+        url = file_url(self.config, path)
+        req = self._request(url, token=token, accept_raw=False)
+        reply = self._manager.get(req)
+        reply.finished.connect(
+            lambda r=reply, p=path, u=url, t=token: self._on_delete_sha(r, p, u, t))
+
+    def _on_delete_sha(self, reply, path, url, token):
+        try:
+            if reply.error() != QNetworkReply.NoError:
+                status = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+                if status == 404:
+                    self.file_synced.emit(path, False)  # 远程本来就不存在
+                    self._next()
+                    return
+                self._errors.append(f"删除 {path}: {reply.errorString()}")
+                self._next()
+                return
+            info = json.loads(reply.readAll().data().decode("utf-8"))
+            sha = info.get("sha")
+        except Exception as e:
+            self._errors.append(f"删除 {path}: {e}")
+            self._next()
+            return
+        finally:
+            reply.deleteLater()
+        body = {
+            "message": f"sync: delete {path}",
+            "sha": sha,
+            "branch": self.config.sync_branch,
+        }
+        req = self._request(url, token=token, accept_raw=False, timeout_ms=60000)
+        req.setHeader(QNetworkRequest.ContentTypeHeader, "application/json")
+        del_reply = self._manager.sendCustomRequest(
+            req, QByteArray(b"DELETE"), QByteArray(json.dumps(body).encode("utf-8")))
+        del_reply.finished.connect(
+            lambda r=del_reply, p=path: self._on_deleted(r, p))
+
+    def _on_deleted(self, reply, path):
+        try:
+            if reply.error() != QNetworkReply.NoError:
+                self._errors.append(f"删除 {path}: {reply.errorString()}")
+            else:
+                self._done += 1
+                self.file_synced.emit(path, True)
+        except Exception as e:
+            self._errors.append(f"删除 {path}: {e}")
         finally:
             reply.deleteLater()
             self._next()
@@ -369,6 +529,30 @@ class DataSyncManager(QObject):
     def warnings(self):
         return list(self._warnings)
 
+    def fetch_remote_tag(self):
+        """快速检查：只请求远程 sync_tag.txt 的当前值（一次请求）。
+        返回 (tag, error)；tag 为 None 表示仓库里还没有标签文件（不算错误）。"""
+        from PyQt5.QtCore import QEventLoop
+        token = self._token()
+        url = file_url(self.config, SYNC_TAG_FILE)
+        req = self._request(url, token=token, timeout_ms=15000)
+        result = {"tag": None, "error": None}
+        reply = self._manager.get(req)
+        loop = QEventLoop()
+        reply.finished.connect(loop.quit)
+        loop.exec_()
+        try:
+            if reply.error() == QNetworkReply.NoError:
+                result["tag"] = bytes(reply.readAll()).decode(
+                    "utf-8", "ignore").strip()
+            else:
+                status = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+                if status != 404:
+                    result["error"] = reply.errorString()
+        finally:
+            reply.deleteLater()
+        return result["tag"], result["error"]
+
 
 class SyncWorker(QObject):
     """后台线程执行的登录前同步 + 静默版本检查"""
@@ -394,6 +578,13 @@ class SyncWorker(QObject):
             mgr = DataSyncManager(cfg)
             loop = QEventLoop()
 
+            # ---- 快速同步检查：远程整体标签 vs 本地标签 ----
+            # 标签大概率长时间不变；相同则跳过全量拉取（只花一次小请求）
+            remote_tag, tag_err = mgr.fetch_remote_tag()
+            local_tag = read_local_tag(cfg)
+            skip_pull = (tag_err is None and remote_tag
+                         and remote_tag == local_tag)
+
             # 总超时兜底：即使某个请求异常（如网络假死）也不允许无限等待
             timeout_hit = {"v": False}
             watchdog = QTimer()
@@ -404,14 +595,22 @@ class SyncWorker(QObject):
                 loop.quit()
 
             watchdog.timeout.connect(on_watchdog)
-            watchdog.start(15000)
             mgr.sync_done.connect(loop.quit)
-            mgr.pull()
-            loop.exec_()
-            watchdog.stop()
-
-            if timeout_hit["v"]:
-                mgr._errors.append("同步超时（15 秒未完成），请检查网络后重试")
+            if not skip_pull:
+                watchdog.start(60000)
+                mgr.pull()
+                loop.exec_()
+                watchdog.stop()
+                if timeout_hit["v"]:
+                    mgr._errors.append("同步超时（60 秒未完成），请检查网络后重试")
+                # 拉取完成后，用刚下载的标签更新本地记录
+                if not mgr.errors:
+                    try:
+                        pulled = (cfg.data_dir / SYNC_TAG_FILE).read_text(
+                            encoding="utf-8").strip()
+                    except Exception:
+                        pulled = ""
+                    save_local_tag(cfg, pulled or remote_tag or "")
 
             result = {
                 "success": not mgr.errors,

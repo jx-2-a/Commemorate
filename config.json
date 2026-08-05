@@ -1,7 +1,7 @@
 {
     "app": {
         "name": "Commemorate",
-        "version": "1.2.0"
+        "version": "1.3.0"
     },
     "update": {
         "auto_check": true,
@@ -17,7 +17,8 @@
         "files": [
             "config.json",
             "rules.txt",
-            "TimerPageWords.csv"
+            "TimerPageWords.csv",
+            "sync_tag.txt"
         ],
         "push_files": [
             "rules.txt"
