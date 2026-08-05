@@ -418,6 +418,7 @@ class CommemorateWindow(QWidget):
         self.sidebar_opacity = 0.0
         self.sidebar_hover = -1
         self.sidebar_hover_alpha = 0.0
+        self._sidebar_lens = {}
         self._drag_active = False
         self._drag_acc = 0.0
         self._drag_last_y = 0
@@ -477,8 +478,8 @@ class CommemorateWindow(QWidget):
         if n == 0:
             return []
         x0 = 22
-        y0 = self.win_h * 0.125
-        y1 = self.win_h * 0.875
+        y0 = self.win_h * 0.35
+        y1 = self.win_h * 0.65
         out = []
         for idx in range(max(0, self.current_index - 2), min(n, self.current_index + 3)):
             slot = idx - self.current_index + 2
@@ -531,6 +532,21 @@ class CommemorateWindow(QWidget):
             else:
                 self.sidebar_hover_alpha = max(0.0, self.sidebar_hover_alpha - 0.08)
 
+            # 每根短横线的长度平滑过渡（避免恢复时与当前页横线冲突闪烁）
+            hovered = self.sidebar_hover
+            ha = self.sidebar_hover_alpha
+            for idx, slot, x, y in self._sidebar_layout():
+                if hovered >= 0 and ha > 0.02:
+                    d = abs(idx - hovered)
+                    factor = math.exp(-(d * d) / (2 * 1.15 * 1.15))
+                else:
+                    factor = 0.0
+                target = 14 + 28 * factor * ha
+                if idx == self.current_index:
+                    target = max(target, 22)
+                cur = self._sidebar_lens.get(idx, 14.0)
+                self._sidebar_lens[idx] = cur + (target - cur) * 0.18
+
             self.update()
         except Exception:
             # 动画循环不允许崩溃：记录一次完整堆栈后继续
@@ -573,28 +589,22 @@ class CommemorateWindow(QWidget):
         for idx, slot, x, y in items:
             current = (idx == self.current_index)
 
-            # 平滑长度：悬停项最长，两侧按高斯递减（圆滑过渡）
-            if hovered >= 0 and ha > 0.02:
-                d = abs(idx - hovered)
-                factor = math.exp(-(d * d) / (2 * 1.15 * 1.15))
-            else:
-                factor = 0.0
-            length = 14 + 28 * factor * ha
-            if current and ha < 0.05:
-                length = max(length, 22)
+            # 长度已在 _tick 中平滑过渡，这里直接取用
+            length = self._sidebar_lens.get(idx, 14.0)
+            grow = min(1.0, max(0.0, (length - 14) / 28))
 
             # 短横线
             if current:
                 line_color = QColor(255, 190, 220, int(alpha * 0.95))
             else:
                 line_color = QColor(
-                    215, 210, 225, int(alpha * (0.4 + 0.45 * factor * ha))
+                    215, 210, 225, int(alpha * (0.4 + 0.45 * grow))
                 )
             painter.setPen(QPen(line_color, 2))
             painter.setBrush(Qt.NoBrush)
             painter.drawLine(QPointF(x - length / 2, y), QPointF(x + length / 2, y))
 
-            # 悬停项显示页面名称（淡入淡出）
+            # 悬停项显示页面名称（淡入淡出，垂直中点与横线对齐）
             if hovered == idx and ha > 0.02:
                 font = QFont("Microsoft YaHei", 12)
                 painter.setFont(font)
@@ -603,7 +613,7 @@ class CommemorateWindow(QWidget):
                 painter.setPen(QColor(240, 238, 245, int(alpha * ha)))
                 painter.drawText(
                     int(x + length / 2 + 10),
-                    int(y - fm.height() / 2),
+                    int(y + (fm.ascent() - fm.descent()) / 2),
                     text,
                 )
 
