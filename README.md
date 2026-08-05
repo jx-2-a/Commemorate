@@ -17,7 +17,7 @@ GitHub 私有仓库 my-app-data（配置与数据）
 └── rules.txt               ← 规则数据（可推送）
 ```
 
-更新链路：应用启动 → 读取公开仓库 `version.json`（无需 token）→ 有新版则从 GitHub Releases 下载 `app.zip`（地址按版本号寻址，如 `releases/download/v1.1.0/app.zip`）→ 校验 SHA-256 → 解压 → 独立的 `updater.bat` 等待旧程序退出后替换 exe 并重启。
+更新链路：应用启动 → 读取公开仓库 `version.json`（无需 token）→ 有新版则从 GitHub Releases 下载 `app.zip`（地址按版本号寻址，如 `releases/download/v1.1.0/app.zip`）→ 校验 SHA-256 → 解压 → 独立的 `updater.exe` 等待旧程序退出后替换 exe 并重启。
 
 启动流程：立即显示登录窗口，同时在后台线程同步用户信息与其他数据（拉取到本地 `data/`，`config.json` 作为远程配置叠加生效）并静默完成版本检查，不阻塞界面；登录必须等待同步成功（同步期间按钮禁用，失败则阻止登录，右上角出现刷新按钮可一键重试同步）→ 登录成功 → 如需更新则切换为更新界面，更新完成后自动重启并自动登录进入主窗口；`data.csv` / `rules.txt` 可通过 `--sync-push` 推回仓库。
 

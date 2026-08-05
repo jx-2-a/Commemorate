@@ -1,13 +1,14 @@
 """
 UpdateManager — 版本检查 & 自动更新
-异步检查私有仓库 version.json，从公开仓库 Release/app.zip 下载更新包，
-校验 SHA-256 后解压，替换 exe 并直接启动新版本
+异步检查公开仓库 version.json，从 GitHub Releases 下载更新包，
+校验 SHA-256 后解压，由独立的 updater.exe 替换 exe 并重启
 """
 import hashlib
 import os
 import sys
 import json
 import shutil
+import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
@@ -52,102 +53,6 @@ def _find_exe(root: Path):
             return p
     exes = list(root.rglob("*.exe"))
     return exes[0] if exes else None
-
-
-def _build_updater_bat(target_exe: Path, source_exe: Path, bat_dir: Path) -> str:
-    """生成独立的更新脚本 updater.bat
-
-    更新脚本独立于主程序运行，负责：
-    1. 等待旧主程序完全退出（最多 40 秒，超时则强制结束）
-    2. 用新 exe 替换旧 exe（失败时旧 exe 保持不动）
-    3. 清除 _MEIPASS2 环境变量后启动新版本（避免 PyInstaller 复用旧进程
-       已清理的临时解压目录）
-    4. 清理临时解压目录与自身，并记录 updater.log 便于排查
-    """
-    tmp_dir = source_exe.parent
-    log_path = bat_dir / "updater.log"
-
-    def ps_quote(p: str) -> str:
-        return p.replace("'", "''")
-
-    # 用 PowerShell + ProcessStartInfo 启动新 exe，并彻底移除 _MEIPASS2：
-    # 新 exe 若继承旧进程的 _MEIPASS2，会往旧进程正在被清理的临时目录里解压，
-    # 导致 python311.dll 加载失败（Failed to load Python DLL）。
-    # 注意不能依赖 EnvironmentVariables.Remove：空字典时子进程仍会继承父环境，
-    # 必须先从当前进程环境里 Remove-Item 真正删掉。
-    ps_starter = (
-        "Remove-Item Env:_MEIPASS2 -ErrorAction SilentlyContinue;"
-        "$p=New-Object System.Diagnostics.ProcessStartInfo;"
-        f"$p.FileName='{ps_quote(str(target_exe))}';"
-        f"$p.WorkingDirectory='{ps_quote(str(target_exe.parent))}';"
-        "$p.UseShellExecute=$false;"
-        "[void][System.Diagnostics.Process]::Start($p)"
-    )
-
-    ps_exe = r"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
-
-    return f"""@echo off
-setlocal EnableDelayedExpansion
-chcp 65001 >nul
-title Commemorate 更新程序
-
-set "TARGET={target_exe}"
-set "SOURCE={source_exe}"
-set "TMPDIR={tmp_dir}"
-set "BATFILE=%~f0"
-set "LOGFILE={log_path}"
-
-echo [%date% %time%] updater started >> "%LOGFILE%" 2>NUL
-echo [%date% %time%] target=%TARGET% >> "%LOGFILE%" 2>NUL
-echo [%date% %time%] source=%SOURCE% >> "%LOGFILE%" 2>NUL
-
-echo  等待主程序退出（最多 40 秒）...
-set /a COUNT=0
-:WAIT_LOOP
-tasklist /FI "IMAGENAME eq Commemorate.exe" 2>NUL | find /I "Commemorate.exe" >NUL
-if errorlevel 1 goto REPLACE
-timeout /t 1 /nobreak >NUL
-set /a COUNT+=1
-if !COUNT! geq 40 goto FORCE
-goto WAIT_LOOP
-
-:FORCE
-echo  主程序未退出，正在强制关闭...
-taskkill /F /IM Commemorate.exe >NUL 2>&1
-timeout /t 2 /nobreak >NUL
-
-:REPLACE
-if not exist "%SOURCE%" (
-    echo [%date% %time%] ERROR: source missing: %SOURCE% >> "%LOGFILE%" 2>NUL
-    echo  新版本程序文件缺失，更新失败。
-    pause
-    exit /b 1
-)
-echo  正在替换程序文件...
-copy /Y "%SOURCE%" "%TARGET%" >NUL 2>&1
-if errorlevel 1 (
-    echo [%date% %time%] ERROR: copy failed >> "%LOGFILE%" 2>NUL
-    echo  文件替换失败（可能被杀毒软件占用），请关闭安全软件后重试。
-    pause
-    exit /b 1
-)
-if exist "%TARGET%.old" del /f /q "%TARGET%.old" >NUL 2>&1
-echo [%date% %time%] replace ok, launching new version >> "%LOGFILE%" 2>NUL
-
-set "_MEIPASS2="
-{ps_exe} -NoProfile -ExecutionPolicy Bypass -Command "{ps_starter}"
-if errorlevel 1 (
-    echo [%date% %time%] ERROR: start new version failed >> "%LOGFILE%" 2>NUL
-    pause
-    exit /b 1
-)
-echo [%date% %time%] new version launched >> "%LOGFILE%" 2>NUL
-
-timeout /t 3 /nobreak >NUL
-if exist "%TMPDIR%" rmdir /s /q "%TMPDIR%" >NUL 2>&1
-endlocal
-(goto) 2>nul & del "%~f0"
-"""
 
 
 # ── UpdateManager ──────────────────────────────────────────
@@ -307,11 +212,12 @@ class UpdateManager(QObject):
             self._download_reply.abort()
 
     def schedule_update(self, new_exe_path: str):
-        """安排独立更新脚本替换 exe 并重启
+        """安排独立更新程序 updater.exe 替换 exe 并重启
 
-        旧程序不直接替换 / 启动新 exe，而是生成独立的 updater.bat 后立即退出；
-        updater.bat 等待旧进程完全退出 → 替换 exe → 清除 _MEIPASS2 → 启动新版本。
-        避免新进程在旧进程尚未退出时启动导致的 PyInstaller 临时目录竞态。
+        旧程序不直接替换 / 启动新 exe，而是把打包内置的 updater.exe 放到
+        appdata/local/ 后立即退出；updater.exe 独立完成：
+        等待旧进程完全退出 → 替换 exe → 等待杀毒安定 → 清除 _MEIPASS2 后
+        启动新版本 → 验证新版本解压成功（失败自动重试），全程写 updater.log。
         """
         if not getattr(sys, 'frozen', False):
             self.error_occurred.emit("开发模式不支持自动更新，请手动拉取代码")
@@ -324,19 +230,29 @@ class UpdateManager(QObject):
             return
 
         try:
-            bat_path = self.config.local_dir / "updater.bat"
-            bat_path.write_text(
-                _build_updater_bat(Path(target_exe), source, self.config.local_dir),
-                encoding="utf-8",
-            )
+            # 把打包内置的独立更新程序复制到 appdata/local/
+            meipass = Path(getattr(sys, '_MEIPASS', Path(target_exe).parent))
+            bundled_updater = meipass / "updater.exe"
+            updater_exe = self.config.local_dir / "updater.exe"
+            shutil.copy2(str(bundled_updater), str(updater_exe))
         except Exception as e:
-            self.error_occurred.emit(f"更新安装失败：无法写入更新脚本 {e}")
+            self.error_occurred.emit(f"更新安装失败：无法准备更新程序 {e}")
             return
 
         try:
-            os.startfile(str(bat_path))
+            subprocess.Popen(
+                [
+                    str(updater_exe),
+                    "--target", str(Path(target_exe)),
+                    "--source", str(source),
+                    "--tmp", str(source.parent),
+                    "--log", str(self.config.local_dir / "updater.log"),
+                    "--old-pid", str(os.getpid()),
+                    "--name", "Commemorate",
+                ]
+            )
         except OSError as e:
-            self.error_occurred.emit(f"更新安装失败：无法启动更新脚本 {e}")
+            self.error_occurred.emit(f"更新安装失败：无法启动更新程序 {e}")
 
 
 # ── 更新提示对话框 ─────────────────────────────────────────
