@@ -350,6 +350,7 @@ class ScenePage:
         bg.setColorAt(0.5, QColor(*self.bg_colors[1]))
         bg.setColorAt(1.0, QColor(*self.bg_colors[2]))
         painter.setBrush(QBrush(bg))
+        painter.setPen(Qt.NoPen)
         painter.drawRect(QRectF(0, 0, w, h))
         # 场景动画
         self._paint_scene(painter, w, h)
