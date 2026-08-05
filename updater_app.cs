@@ -209,7 +209,10 @@ class CommemorateUpdater
             var psi = new ProcessStartInfo();
             psi.FileName = target;
             psi.WorkingDirectory = Path.GetDirectoryName(target) ?? "";
-            psi.UseShellExecute = false;
+            // 必须用 UseShellExecute=true（由 shell 启动，等价于双击）。
+            // UseShellExecute=false 会让窗口版 PyInstaller 程序继承父进程
+            // 控制台句柄，导致解压 python DLL 失败（Failed to load Python DLL）。
+            psi.UseShellExecute = true;
             Process p = Process.Start(psi);
             if (p == null)
                 return false;
