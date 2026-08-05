@@ -403,36 +403,39 @@ class CommemorateWindow(QWidget):
         return (mini, maxi, close)
 
     def _sidebar_layout(self):
-        """左侧页面目录：圆环布局，最多 5 项，当前页恒在中间（slot 2）
+        """左侧页面目录：长弧布局，最多 5 项，当前页恒在中间（slot 2）
 
-        返回 [(页面索引, slot, x, y)]；slot 0..4 对应圆环从上到下。
+        弧长约为窗口高度的 3/4，几乎直线、中间略微向右突起。
+        返回 [(页面索引, slot, x, y)]；slot 0..4 对应弧从上到下。
         """
         n = len(self.pages)
         if n == 0:
             return []
-        cx = 16
-        cy = self.win_h * 0.5
-        r = 30
+        x0 = 16
+        depth = 8
+        y0 = self.win_h * 0.125
+        y1 = self.win_h * 0.875
         out = []
         for idx in range(max(0, self.current_index - 2), min(n, self.current_index + 3)):
             slot = idx - self.current_index + 2
-            theta = math.radians(-90 + slot * 45)
-            x = cx + r * math.cos(theta)
-            y = cy + r * math.sin(theta)
+            t = slot / 4
+            x = x0 + depth * math.sin(t * math.pi)
+            y = y0 + t * (y1 - y0)
             out.append((idx, slot, x, y))
         return out
 
-    def _sidebar_ring_path(self):
-        """左侧半圆弧装饰线：两端贴近侧边，中间略微向右突起"""
-        cx = 16
-        cy = self.win_h * 0.5
-        r = 30
+    def _sidebar_arc_path(self):
+        """侧边装饰弧线：弧长约 3/4 窗口高，几乎直线、中间略微右突"""
+        x0 = 16
+        depth = 8
+        y0 = self.win_h * 0.125
+        y1 = self.win_h * 0.875
         path = QPainterPath()
         steps = 48
         for i in range(steps + 1):
-            theta = math.radians(-90 + 180 * i / steps)
-            x = cx + r * math.cos(theta)
-            y = cy + r * math.sin(theta)
+            t = i / steps
+            x = x0 + depth * math.sin(t * math.pi)
+            y = y0 + t * (y1 - y0)
             if i == 0:
                 path.moveTo(x, y)
             else:
@@ -517,7 +520,7 @@ class CommemorateWindow(QWidget):
         arc_pen.setCapStyle(Qt.RoundCap)
         painter.setPen(arc_pen)
         painter.setBrush(Qt.NoBrush)
-        painter.drawPath(self._sidebar_ring_path())
+        painter.drawPath(self._sidebar_arc_path())
 
         for idx, slot, x, y in self._sidebar_layout():
             current = (idx == self.current_index)
