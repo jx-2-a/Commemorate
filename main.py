@@ -222,11 +222,6 @@ class CountdownPage:
         self.w = w
         self.h = h
 
-        # 不透明底色（避免圆角处露出桌面）
-        painter.setBrush(QBrush(QColor(8, 3, 22)))
-        painter.setPen(Qt.NoPen)
-        painter.drawRect(QRectF(0, 0, w, h))
-
         # ── 1. 夜空背景 ──────────────────────────────────
         bg = QLinearGradient(0, 0, 0, h)
         bg.setColorAt(0.0, QColor(5, 2, 20))
@@ -349,10 +344,6 @@ class ScenePage:
     def paint(self, painter, w, h):
         self.w = w
         self.h = h
-        # 不透明底色
-        painter.setBrush(QBrush(QColor(*self.bg_colors[0])))
-        painter.setPen(Qt.NoPen)
-        painter.drawRect(QRectF(0, 0, w, h))
         # 渐变背景（圆角）
         bg = QLinearGradient(0, 0, 0, h)
         bg.setColorAt(0.0, QColor(*self.bg_colors[0]))
@@ -795,10 +786,10 @@ class CommemorateWindow(QWidget):
         painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         w, h = self.win_w, self.win_h
 
-        # 0. 不透明底色：避免过渡动画或圆角处露出桌面
+        # 0. 不透明圆角底色：避免过渡动画时露出桌面，同时保持圆角透明
         painter.setBrush(QBrush(QColor(8, 3, 22)))
         painter.setPen(Qt.NoPen)
-        painter.drawRect(QRectF(0, 0, w, h))
+        painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
 
         # 1. 当前页面内容（切换时交叉淡入淡出）
         page = self._current_page()
