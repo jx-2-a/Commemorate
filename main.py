@@ -157,56 +157,41 @@ def _load_random_message(config) -> str:
     return ""
 
 
-class CommemorateWindow(QWidget):
-    """纪念动画主窗口"""
+class CountdownPage:
+    """纪念计时页：夜空粒子 + DHM 计时 + 随机话语"""
 
-    def __init__(self, config: ConfigManager):
-        super().__init__()
+    name = "纪念计时"
+
+    def __init__(self, config):
         self.config = config
-
-        # 从配置读取纪念信息
         self._comm_date = config.commemorative_date
         self._comm_time = config.commemorative_time
         self._comm_message = _load_random_message(config)
-
-        self.setWindowTitle(f"💖 {config.app_name}")
-        self.setWindowFlags(
-            Qt.FramelessWindowHint
-            | Qt.WindowStaysOnTopHint
-        )
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
-
-        # 获取屏幕尺寸，窗口覆盖 70% 中心区域
-        screen = QApplication.primaryScreen().availableGeometry()
-        self.win_w = int(screen.width() * 0.7)
-        self.win_h = int(screen.height() * 0.7)
-        self.resize(self.win_w, self.win_h)
-        self.move((screen.width() - self.win_w) // 2, (screen.height() - self.win_h) // 2)
-
-        # 粒子
-        self.stars = [Star(self.win_w, self.win_h) for _ in range(120)]
-        self.hearts = [Heart(self.win_w, self.win_h) for _ in range(45)]
-        self.fireflies = [Firefly(self.win_w, self.win_h) for _ in range(18)]
-
-        # 帧 & 动画状态
         self.frame = 0
         self.fade_in = 0.0
         self.time_displayed = False
+        self.w = 0
+        self.h = 0
+        self.stars = []
+        self.hearts = []
+        self.fireflies = []
 
-        # 右上角悬浮控制按钮（鼠标靠近时渐变浮现）
-        self.controls_opacity = 0.0
-        self.controls_hover = -1
-        self._btn_w, self._btn_h, self._btn_gap = 34, 34, 10
-        self._btn_top, self._btn_right = 14, 16
+    def resize(self, w, h):
+        """窗口尺寸变化时重新铺开粒子"""
+        self.w = w
+        self.h = h
+        self.stars = [Star(w, h) for _ in range(120)]
+        self.hearts = [Heart(w, h) for _ in range(45)]
+        self.fireflies = [Firefly(w, h) for _ in range(18)]
 
-        # 主循环
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._tick)
-        self.timer.start(16)  # ~60 FPS
+    def refresh(self):
+        """同步后刷新纪念信息与随机话语"""
+        self._comm_date = self.config.commemorative_date
+        self._comm_time = self.config.commemorative_time
+        self._comm_message = _load_random_message(self.config)
 
-        # 3 秒后显示时间
-        QTimer.singleShot(2500, self._show_time)
+    def show_time(self):
+        self.time_displayed = True
 
     def _elapsed_dhm(self) -> str:
         """从开始时间到现在的间隔，格式：1877D 05H 32M"""
@@ -222,73 +207,20 @@ class CommemorateWindow(QWidget):
         except ValueError:
             return "0D 00H 00M"
 
-    def _show_time(self):
-        self.time_displayed = True
+    def tick(self, frame):
+        self.frame = frame
+        if self.fade_in < 1.0:
+            self.fade_in = min(1.0, self.fade_in + 0.008)
+        for s in self.stars:
+            s.update(frame)
+        for h in self.hearts:
+            h.update(frame, self.w, self.h)
+        for f in self.fireflies:
+            f.update(frame, self.w, self.h)
 
-    def _button_rects(self):
-        """最小化 / 最大化 / 关闭三个按钮的区域（右上角）"""
-        right = self.win_w - self._btn_right
-        close = QRectF(
-            right - self._btn_w, self._btn_top, self._btn_w, self._btn_h
-        )
-        maxi = QRectF(
-            right - self._btn_w * 2 - self._btn_gap,
-            self._btn_top, self._btn_w, self._btn_h,
-        )
-        mini = QRectF(
-            right - self._btn_w * 3 - self._btn_gap * 2,
-            self._btn_top, self._btn_w, self._btn_h,
-        )
-        return (mini, maxi, close)
-
-    def refresh_from_config(self):
-        """数据同步后刷新纪念信息（远程配置可能已更新）"""
-        self._comm_date = self.config.commemorative_date
-        self._comm_time = self.config.commemorative_time
-        self.update()
-
-    def _tick(self):
-        try:
-            self.frame += 1
-            if self.fade_in < 1.0:
-                self.fade_in = min(1.0, self.fade_in + 0.008)
-            for s in self.stars:
-                s.update(self.frame)
-            for h in self.hearts:
-                h.update(self.frame, self.win_w, self.win_h)
-            for f in self.fireflies:
-                f.update(self.frame, self.win_w, self.win_h)
-
-            # 右上角控制按钮：鼠标靠近时渐变浮现，远离时渐变消失
-            mouse_pos = self.mapFromGlobal(QCursor.pos())
-            near = (
-                mouse_pos.x() >= self.win_w - 260
-                and 0 <= mouse_pos.y() <= 120
-            )
-            if near:
-                self.controls_opacity = min(1.0, self.controls_opacity + 0.08)
-            else:
-                self.controls_opacity = max(0.0, self.controls_opacity - 0.06)
-            self.controls_hover = -1
-            if self.controls_opacity > 0.2:
-                for i, r in enumerate(self._button_rects()):
-                    if r.contains(mouse_pos):
-                        self.controls_hover = i
-                        break
-
-            self.update()
-        except Exception:
-            # 动画循环不允许崩溃：记录一次完整堆栈后继续
-            if not getattr(self, "_tick_error_logged", False):
-                self._tick_error_logged = True
-                _write_crash_log(*sys.exc_info())
-                traceback.print_exc()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
-
-        w, h = self.win_w, self.win_h
+    def paint(self, painter, w, h):
+        self.w = w
+        self.h = h
 
         # ── 1. 夜空背景 ──────────────────────────────────
         bg = QLinearGradient(0, 0, 0, h)
@@ -305,8 +237,7 @@ class CommemorateWindow(QWidget):
             color = QColor(255, 255, 220, int(200 * s.brightness * self.fade_in))
             painter.setBrush(QBrush(color))
             painter.setPen(Qt.NoPen)
-            r = s.size
-            painter.drawEllipse(QPointF(s.x, s.y), r, r)
+            painter.drawEllipse(QPointF(s.x, s.y), s.size, s.size)
 
         # ── 3. 萤火虫光晕 ────────────────────────────────
         for f in self.fireflies:
@@ -314,11 +245,9 @@ class CommemorateWindow(QWidget):
             if alpha < 5:
                 continue
             gradient = QRadialGradient(QPointF(f.x, f.y), f.size)
-            c = QColor(255, 220, 140, alpha)
-            c0 = QColor(255, 220, 140, 0)
-            gradient.setColorAt(0.0, c)
+            gradient.setColorAt(0.0, QColor(255, 220, 140, alpha))
             gradient.setColorAt(0.4, QColor(255, 180, 100, alpha // 2))
-            gradient.setColorAt(1.0, c0)
+            gradient.setColorAt(1.0, QColor(255, 220, 140, 0))
             painter.setBrush(QBrush(gradient))
             painter.setPen(Qt.NoPen)
             painter.drawEllipse(QPointF(f.x, f.y), f.size, f.size)
@@ -338,7 +267,6 @@ class CommemorateWindow(QWidget):
             timer_y = int(h * 0.46)
             msg_y = timer_y + 90
 
-            # DHM 计时（大号字，格式：1877D 05H 32M）
             timer_text = self._elapsed_dhm()
             timer_font = QFont("Microsoft YaHei", 50, QFont.Bold)
             painter.setFont(timer_font)
@@ -347,7 +275,6 @@ class CommemorateWindow(QWidget):
             tw = fm.horizontalAdvance(timer_text)
             painter.drawText(int(cx - tw / 2), timer_y, timer_text)
 
-            # 随机话语（计时下方，一行略小的字）
             if self._comm_message:
                 msg_font = QFont("Microsoft YaHei", 20)
                 msg_font.setItalic(True)
@@ -357,7 +284,7 @@ class CommemorateWindow(QWidget):
                 mw = fm2.horizontalAdvance(self._comm_message)
                 painter.drawText(int(cx - mw / 2), msg_y, self._comm_message)
 
-        # ── 6. 底部日期 ──────────────────────────────────
+        # ── 6. 底部当前时间 ──────────────────────────────
         if self.time_displayed:
             bottom_alpha = min(1.0, (self.frame - 150) / 80.0)
             if bottom_alpha > 0.05:
@@ -365,69 +292,12 @@ class CommemorateWindow(QWidget):
                 bottom_font = QFont("Microsoft YaHei", 13)
                 painter.setFont(bottom_font)
                 painter.setPen(QColor(220, 200, 230, alpha))
-
                 date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 fm3 = QFontMetrics(bottom_font)
                 dw = fm3.horizontalAdvance(date_str)
                 painter.drawText(int(cx - dw / 2), h - 90, date_str)
-
-                # 装饰线
                 painter.setPen(QPen(QColor(180, 140, 200, alpha), 1))
-                line_y = h - 78
-                painter.drawLine(int(cx - 120), line_y, int(cx + 120), line_y)
-
-        # ── 7. 边框微光 ──────────────────────────────────
-        border_color = QColor(180, 140, 200, int(40 * self.fade_in))
-        painter.setPen(QPen(border_color, 1.5))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(QRectF(1, 1, w - 2, h - 2), 19, 19)
-
-        # ── 8. 右上角悬浮控制按钮（鼠标靠近时浮现）────────
-        if self.controls_opacity > 0.02:
-            alpha = int(255 * self.controls_opacity)
-            for i, r in enumerate(self._button_rects()):
-                hover = (i == self.controls_hover)
-                if hover:
-                    if i == 2:
-                        bg = QColor(255, 80, 110, int(alpha * 0.9))
-                    else:
-                        bg = QColor(90, 45, 120, int(alpha * 0.92))
-                else:
-                    bg = QColor(15, 8, 32, int(alpha * 0.72))
-                painter.setPen(Qt.NoPen)
-                painter.setBrush(QBrush(bg))
-                painter.drawRoundedRect(r, 9, 9)
-
-                pen = QPen(QColor(255, 240, 245, alpha), 2)
-                pen.setCapStyle(Qt.RoundCap)
-                painter.setPen(pen)
-                painter.setBrush(Qt.NoBrush)
-                cx = r.center().x()
-                cy = r.center().y()
-                if i == 0:
-                    # 最小化：横线
-                    painter.drawLine(QPointF(cx - 8, cy), QPointF(cx + 8, cy))
-                elif i == 1:
-                    maxed = self.windowState() & (
-                        Qt.WindowMaximized | Qt.WindowFullScreen
-                    )
-                    if maxed:
-                        # 已最大化/全屏：显示“还原”图标（两个相同方框错开，
-                        # 上方的方框用底色遮住下方的）
-                        painter.setBrush(Qt.NoBrush)
-                        painter.drawRect(QRectF(cx - 4, cy - 2, 16, 14))
-                        painter.setBrush(QBrush(bg))
-                        painter.drawRect(QRectF(cx - 9, cy - 8, 16, 14))
-                        painter.setBrush(Qt.NoBrush)
-                    else:
-                        # 最大化：单个方框
-                        painter.drawRect(QRectF(cx - 8, cy - 7, 16, 14))
-                else:
-                    # 关闭：叉
-                    painter.drawLine(QPointF(cx - 7, cy - 7), QPointF(cx + 7, cy + 7))
-                    painter.drawLine(QPointF(cx - 7, cy + 7), QPointF(cx + 7, cy - 7))
-
-        painter.end()
+                painter.drawLine(int(cx - 120), h - 78, int(cx + 120), h - 78)
 
     def _draw_heart(self, painter, x, y, size):
         """用贝塞尔曲线画爱心"""
@@ -440,6 +310,330 @@ class CommemorateWindow(QWidget):
         path.cubicTo(x + s * 0.9, y - s * 0.1, x, y - s * 0.1, x, y + s * 0.4)
         painter.drawPath(path)
 
+
+PAGE_CLASSES = [CountdownPage]
+
+
+class CommemorateWindow(QWidget):
+    """主窗口容器：右上角控制按钮 + 左侧页面目录（圆弧排列、可滚轮/拖动切换）"""
+
+    def __init__(self, config: ConfigManager):
+        super().__init__()
+        self.config = config
+        self.pages = [cls(config) for cls in PAGE_CLASSES]
+        self.current_index = 0
+
+        self.setWindowTitle(f"💖 {config.app_name}")
+        self.setWindowFlags(
+            Qt.FramelessWindowHint
+            | Qt.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setMouseTracking(True)
+
+        # 获取屏幕尺寸，窗口覆盖 70% 中心区域
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.win_w = int(screen.width() * 0.7)
+        self.win_h = int(screen.height() * 0.7)
+        self.resize(self.win_w, self.win_h)
+        self.move((screen.width() - self.win_w) // 2, (screen.height() - self.win_h) // 2)
+        for page in self.pages:
+            page.resize(self.win_w, self.win_h)
+
+        self.frame = 0
+
+        # 右上角悬浮控制按钮（鼠标靠近时渐变浮现）
+        self.controls_opacity = 0.0
+        self.controls_hover = -1
+        self._btn_w, self._btn_h, self._btn_gap = 34, 34, 10
+        self._btn_top, self._btn_right = 14, 16
+
+        # 左侧页面目录（鼠标靠近时渐变浮现）
+        self.sidebar_opacity = 0.0
+        self.sidebar_hover = -1
+        self._drag_active = False
+        self._drag_acc = 0.0
+        self._drag_last_y = 0
+
+        # 主循环
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(16)  # ~60 FPS
+
+        # 3 秒后显示底部时间
+        QTimer.singleShot(2500, self._show_time)
+
+    def _current_page(self):
+        return self.pages[self.current_index % len(self.pages)]
+
+    def _show_time(self):
+        self._current_page().show_time()
+
+    def _switch_page(self, delta):
+        """切换页面（滚轮 / 拖动），可扩展：页面来自 PAGE_CLASSES"""
+        n = len(self.pages)
+        if n < 2:
+            return
+        self.current_index = (self.current_index + delta) % n
+        self._current_page().show_time()
+        self.update()
+
+    def refresh_from_config(self):
+        """数据同步后刷新各页面信息"""
+        for page in self.pages:
+            if hasattr(page, "refresh"):
+                page.refresh()
+        self.update()
+
+    def _button_rects(self):
+        """最小化 / 最大化 / 关闭三个按钮的区域（右上角）"""
+        right = self.win_w - self._btn_right
+        close = QRectF(
+            right - self._btn_w, self._btn_top, self._btn_w, self._btn_h
+        )
+        maxi = QRectF(
+            right - self._btn_w * 2 - self._btn_gap,
+            self._btn_top, self._btn_w, self._btn_h,
+        )
+        mini = QRectF(
+            right - self._btn_w * 3 - self._btn_gap * 2,
+            self._btn_top, self._btn_w, self._btn_h,
+        )
+        return (mini, maxi, close)
+
+    def _sidebar_item_positions(self):
+        """左侧页面目录位置：沿侧边成圆弧排列"""
+        w, h = self.win_w, self.win_h
+        n = len(self.pages)
+        out = []
+        for i in range(n):
+            t = 0.5 if n == 1 else i / (n - 1)
+            y = h * 0.18 + t * (h * 0.64)
+            x = 34 + 58 * math.sin(t * math.pi)
+            out.append((x, y))
+        return out
+
+    def _tick(self):
+        try:
+            self.frame += 1
+            self._current_page().tick(self.frame)
+            mouse_pos = self.mapFromGlobal(QCursor.pos())
+
+            # 右上角控制按钮：鼠标靠近时渐变浮现，远离时渐变消失
+            near_controls = (
+                mouse_pos.x() >= self.win_w - 260
+                and 0 <= mouse_pos.y() <= 120
+            )
+            if near_controls:
+                self.controls_opacity = min(1.0, self.controls_opacity + 0.08)
+            else:
+                self.controls_opacity = max(0.0, self.controls_opacity - 0.06)
+            self.controls_hover = -1
+            if self.controls_opacity > 0.2:
+                for i, r in enumerate(self._button_rects()):
+                    if r.contains(mouse_pos):
+                        self.controls_hover = i
+                        break
+
+            # 左侧页面目录：鼠标靠近左边缘时浮现，远离时消失
+            near_sidebar = (
+                mouse_pos.x() <= 150
+                and 0 <= mouse_pos.y() <= self.win_h
+            )
+            if near_sidebar:
+                self.sidebar_opacity = min(1.0, self.sidebar_opacity + 0.08)
+            else:
+                self.sidebar_opacity = max(0.0, self.sidebar_opacity - 0.06)
+            self.sidebar_hover = -1
+            if self.sidebar_opacity > 0.2:
+                for i, (x, y) in enumerate(self._sidebar_item_positions()):
+                    if QRectF(x - 90, y - 20, 180, 40).contains(mouse_pos):
+                        self.sidebar_hover = i
+                        break
+
+            self.update()
+        except Exception:
+            # 动画循环不允许崩溃：记录一次完整堆栈后继续
+            if not getattr(self, "_tick_error_logged", False):
+                self._tick_error_logged = True
+                _write_crash_log(*sys.exc_info())
+                traceback.print_exc()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        w, h = self.win_w, self.win_h
+
+        # 1. 当前页面内容
+        self._current_page().paint(painter, w, h)
+
+        # 2. 边框微光
+        border_color = QColor(180, 140, 200, int(40 * self._current_page().fade_in))
+        painter.setPen(QPen(border_color, 1.5))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(QRectF(1, 1, w - 2, h - 2), 19, 19)
+
+        # 3. 左侧页面目录
+        self._paint_sidebar(painter, w, h)
+
+        # 4. 右上角悬浮控制按钮
+        self._paint_controls(painter, w, h)
+
+        painter.end()
+
+    def _paint_sidebar(self, painter, w, h):
+        if self.sidebar_opacity <= 0.02:
+            return
+        alpha = int(255 * self.sidebar_opacity)
+        for i, (x, y) in enumerate(self._sidebar_item_positions()):
+            current = (i == self.current_index)
+            hover = (i == self.sidebar_hover)
+            if current:
+                font = QFont("Microsoft YaHei", 18, QFont.Bold)
+                color = QColor(255, 235, 245, alpha)
+            else:
+                font = QFont("Microsoft YaHei", 14)
+                color = QColor(225, 205, 235, int(alpha * 0.75))
+            if hover and not current:
+                color = QColor(255, 220, 240, alpha)
+            painter.setFont(font)
+            fm = QFontMetrics(font)
+            text = self.pages[i].name
+            tw = fm.horizontalAdvance(text)
+            if current:
+                painter.setPen(QPen(QColor(255, 160, 200, alpha), 3))
+                painter.drawLine(QPointF(x - 72, y), QPointF(x - 48, y))
+            painter.setPen(color)
+            painter.drawText(int(x - tw / 2), int(y), text)
+
+    def _paint_controls(self, painter, w, h):
+        if self.controls_opacity <= 0.02:
+            return
+        alpha = int(255 * self.controls_opacity)
+        for i, r in enumerate(self._button_rects()):
+            hover = (i == self.controls_hover)
+            if hover:
+                if i == 2:
+                    bg = QColor(255, 80, 110, int(alpha * 0.9))
+                else:
+                    bg = QColor(90, 45, 120, int(alpha * 0.92))
+            else:
+                bg = QColor(15, 8, 32, int(alpha * 0.72))
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(bg))
+            painter.drawRoundedRect(r, 9, 9)
+
+            pen = QPen(QColor(255, 240, 245, alpha), 2)
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            cx = r.center().x()
+            cy = r.center().y()
+            if i == 0:
+                # 最小化：横线
+                painter.drawLine(QPointF(cx - 8, cy), QPointF(cx + 8, cy))
+            elif i == 1:
+                maxed = self.windowState() & (
+                    Qt.WindowMaximized | Qt.WindowFullScreen
+                )
+                if maxed:
+                    # 已最大化/全屏：显示“还原”图标（两个相同方框错开，
+                    # 上方的方框用底色遮住下方的）
+                    painter.setBrush(Qt.NoBrush)
+                    painter.drawRect(QRectF(cx - 4, cy - 2, 16, 14))
+                    painter.setBrush(QBrush(bg))
+                    painter.drawRect(QRectF(cx - 9, cy - 8, 16, 14))
+                    painter.setBrush(Qt.NoBrush)
+                else:
+                    # 最大化：单个方框
+                    painter.drawRect(QRectF(cx - 8, cy - 7, 16, 14))
+            else:
+                # 关闭：叉
+                painter.drawLine(QPointF(cx - 7, cy - 7), QPointF(cx + 7, cy + 7))
+                painter.drawLine(QPointF(cx - 7, cy + 7), QPointF(cx + 7, cy - 7))
+
+    def wheelEvent(self, event):
+        """滚轮切换页面（目录浮现时生效）"""
+        if self.sidebar_opacity > 0.3:
+            dy = event.angleDelta().y()
+            if dy:
+                self._switch_page(1 if dy < 0 else -1)
+                event.accept()
+                return
+        super().wheelEvent(event)
+
+    def mousePressEvent(self, event):
+        """左键按住左边缘区域开始上下拖动切换页面"""
+        if (
+            event.button() == Qt.LeftButton
+            and self.sidebar_opacity > 0.3
+            and event.pos().x() <= 180
+        ):
+            self._drag_active = True
+            self._drag_acc = 0.0
+            self._drag_last_y = event.pos().y()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_active and event.buttons() & Qt.LeftButton:
+            dy = event.pos().y() - self._drag_last_y
+            self._drag_last_y = event.pos().y()
+            self._drag_acc += dy
+            threshold = 55.0
+            while self._drag_acc >= threshold:
+                self._switch_page(1)
+                self._drag_acc -= threshold
+            while self._drag_acc <= -threshold:
+                self._switch_page(-1)
+                self._drag_acc += threshold
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        """点击目录项切换页面；点击右上角按钮执行窗口操作"""
+        if event.button() == Qt.LeftButton:
+            self._drag_active = False
+            pos = event.pos()
+
+            if self.sidebar_opacity > 0.4:
+                for i, (x, y) in enumerate(self._sidebar_item_positions()):
+                    if QRectF(x - 90, y - 20, 180, 40).contains(pos):
+                        self.current_index = i
+                        self._current_page().show_time()
+                        self.update()
+                        event.accept()
+                        return
+
+            if self.controls_opacity > 0.4:
+                rects = self._button_rects()
+                for i, r in enumerate(rects):
+                    if r.contains(pos):
+                        if i == 0:
+                            self.showMinimized()
+                        elif i == 1:
+                            if self.windowState() & (
+                                Qt.WindowMaximized | Qt.WindowFullScreen
+                            ):
+                                self.showNormal()
+                            else:
+                                self.showMaximized()
+                        else:
+                            self._shutdown()
+                        event.accept()
+                        return
+        super().mouseReleaseEvent(event)
+
+    def resizeEvent(self, event):
+        self.win_w = self.width()
+        self.win_h = self.height()
+        for page in self.pages:
+            page.resize(self.win_w, self.win_h)
+        super().resizeEvent(event)
+
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Escape, Qt.Key_Q):
             self._shutdown()
@@ -448,39 +642,6 @@ class CommemorateWindow(QWidget):
                 self.showNormal()
             else:
                 self.showFullScreen()
-
-    def mouseReleaseEvent(self, event):
-        """点击右上角悬浮按钮：最小化 / 最大化 / 关闭"""
-        if self.controls_opacity > 0.4:
-            pos = event.pos()
-            rects = self._button_rects()
-            for i, r in enumerate(rects):
-                if r.contains(pos):
-                    if i == 0:
-                        self.showMinimized()
-                    elif i == 1:
-                        if self.windowState() & (
-                            Qt.WindowMaximized | Qt.WindowFullScreen
-                        ):
-                            self.showNormal()
-                        else:
-                            self.showMaximized()
-                    else:
-                        self._shutdown()
-                    event.accept()
-                    return
-        super().mouseReleaseEvent(event)
-
-    def resizeEvent(self, event):
-        old_w, old_h = self.win_w, self.win_h
-        self.win_w = self.width()
-        self.win_h = self.height()
-        if hasattr(self, "stars") and (self.win_w, self.win_h) != (old_w, old_h):
-            # 全屏/最大化后重新铺开粒子，避免星星只集中在左上角
-            self.stars = [Star(self.win_w, self.win_h) for _ in range(120)]
-            self.hearts = [Heart(self.win_w, self.win_h) for _ in range(45)]
-            self.fireflies = [Firefly(self.win_w, self.win_h) for _ in range(18)]
-        super().resizeEvent(event)
 
     def closeEvent(self, event):
         # 关闭前停止动画定时器，避免窗口销毁后 _tick 继续访问已删除对象
