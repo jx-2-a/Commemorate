@@ -316,19 +316,25 @@ class CountdownPage:
         painter.drawPath(path)
 
 
-class PlaceholderPage:
-    """测试用占位页面：每个页面一套配色 + 线/面/色装饰（后续替换为真实功能页）"""
+class ScenePage:
+    """带场景动画的测试页基类：每页一套配色 + 一种背景场景"""
 
-    name = "Placeholder"
+    name = "Scene"
     bg_colors = ((8, 4, 24), (22, 10, 42), (42, 18, 56))
     accent = (255, 170, 210)
 
     def __init__(self, config):
         self.config = config
         self.fade_in = 1.0
+        self.frame = 0
+        self.w = 0
+        self.h = 0
+        self._init_scene()
 
     def resize(self, w, h):
-        pass
+        self.w = w
+        self.h = h
+        self._init_scene()
 
     def refresh(self):
         pass
@@ -337,14 +343,16 @@ class PlaceholderPage:
         pass
 
     def tick(self, frame):
-        pass
+        self.frame = frame
+        self._tick_scene()
 
     def paint(self, painter, w, h):
+        self.w = w
+        self.h = h
         # 不透明底色
         painter.setBrush(QBrush(QColor(*self.bg_colors[0])))
         painter.setPen(Qt.NoPen)
         painter.drawRect(QRectF(0, 0, w, h))
-
         # 渐变背景（圆角）
         bg = QLinearGradient(0, 0, 0, h)
         bg.setColorAt(0.0, QColor(*self.bg_colors[0]))
@@ -352,30 +360,8 @@ class PlaceholderPage:
         bg.setColorAt(1.0, QColor(*self.bg_colors[2]))
         painter.setBrush(QBrush(bg))
         painter.drawRoundedRect(QRectF(0, 0, w, h), 20, 20)
-
-        # 装饰：大块半透明色面（颜色随页面主题）
-        seed = sum(ord(c) for c in self.name)
-        rnd = random.Random(seed)
-        accent = QColor(*self.accent)
-        for _ in range(3):
-            bx = rnd.uniform(0.15, 0.85) * w
-            by = rnd.uniform(0.15, 0.85) * h
-            br = rnd.uniform(0.08, 0.18) * w
-            blob = QRadialGradient(QPointF(bx, by), br)
-            blob.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 46))
-            blob.setColorAt(1.0, QColor(accent.red(), accent.green(), accent.blue(), 0))
-            painter.setBrush(QBrush(blob))
-            painter.setPen(Qt.NoPen)
-            painter.drawEllipse(QPointF(bx, by), br, br)
-
-        # 装饰：细线
-        line_pen = QPen(QColor(accent.red(), accent.green(), accent.blue(), 55), 1)
-        painter.setPen(line_pen)
-        painter.drawLine(QPointF(w * 0.12, h * 0.2), QPointF(w * 0.34, h * 0.2))
-        painter.drawLine(QPointF(w * 0.66, h * 0.8), QPointF(w * 0.88, h * 0.8))
-        painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 30), 1))
-        painter.drawEllipse(QPointF(w * 0.8, h * 0.18), w * 0.12, w * 0.12)
-
+        # 场景动画
+        self._paint_scene(painter, w, h)
         # 页面名称
         painter.setFont(QFont("Microsoft YaHei", 36, QFont.Bold))
         painter.setPen(QColor(255, 235, 245, 220))
@@ -383,35 +369,220 @@ class PlaceholderPage:
         tw = fm.horizontalAdvance(self.name)
         painter.drawText(int(w / 2 - tw / 2), int(h / 2), self.name)
 
+    def _init_scene(self):
+        pass
 
-class GalleryPage(PlaceholderPage):
+    def _tick_scene(self):
+        pass
+
+    def _paint_scene(self, painter, w, h):
+        pass
+
+
+class GalleryPage(ScenePage):
+    """斜向流星场景"""
+
     name = "Gallery"
     bg_colors = ((6, 10, 28), (14, 30, 58), (26, 52, 86))
-    accent = (130, 190, 255)
+    accent = (150, 200, 255)
+
+    def _init_scene(self):
+        self.meteors = [self._new_meteor() for _ in range(14)]
+
+    def _new_meteor(self):
+        return {
+            "x": random.uniform(-100, self.w),
+            "y": random.uniform(-100, self.h),
+            "vx": random.uniform(5, 10),
+            "vy": random.uniform(3, 7),
+            "len": random.uniform(70, 150),
+            "alpha": random.uniform(0.35, 0.8),
+        }
+
+    def _tick_scene(self):
+        for m in self.meteors:
+            m["x"] += m["vx"]
+            m["y"] += m["vy"]
+            if m["x"] > self.w + 160 or m["y"] > self.h + 160:
+                m.update(self._new_meteor())
+
+    def _paint_scene(self, painter, w, h):
+        accent = QColor(*self.accent)
+        for m in self.meteors:
+            x0 = m["x"] - m["len"]
+            y0 = m["y"] - m["len"] * m["vy"] / m["vx"]
+            grad = QLinearGradient(x0, y0, m["x"], m["y"])
+            grad.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 0))
+            grad.setColorAt(1.0, QColor(255, 255, 255, int(255 * m["alpha"])))
+            pen = QPen(QBrush(grad), 2)
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+            painter.drawLine(QPointF(x0, y0), QPointF(m["x"], m["y"]))
 
 
-class MusicPage(PlaceholderPage):
+class MusicPage(ScenePage):
+    """同心圆波纹场景"""
+
     name = "Music"
     bg_colors = ((24, 4, 30), (46, 12, 52), (74, 26, 70))
     accent = (255, 150, 220)
 
+    def _init_scene(self):
+        self.rings = [self._new_ring() for _ in range(6)]
 
-class NotesPage(PlaceholderPage):
+    def _new_ring(self):
+        return {
+            "x": random.uniform(0.2, 0.8) * self.w,
+            "y": random.uniform(0.2, 0.8) * self.h,
+            "r": random.uniform(0, 40),
+            "vr": random.uniform(1.4, 2.6),
+            "alpha": random.uniform(0.25, 0.5),
+        }
+
+    def _tick_scene(self):
+        for r in self.rings:
+            r["r"] += r["vr"]
+            r["alpha"] -= 0.006
+        self.rings = [r for r in self.rings if r["alpha"] > 0.01]
+        while len(self.rings) < 6:
+            self.rings.append(self._new_ring())
+
+    def _paint_scene(self, painter, w, h):
+        accent = QColor(*self.accent)
+        for r in self.rings:
+            a = int(255 * r["alpha"])
+            for ratio, fade in ((1.0, 1.0), (0.7, 0.55), (1.35, 0.35)):
+                painter.setPen(
+                    QPen(
+                        QColor(accent.red(), accent.green(), accent.blue(), int(a * fade)),
+                        1,
+                    )
+                )
+                painter.setBrush(Qt.NoBrush)
+                painter.drawEllipse(QPointF(r["x"], r["y"]), r["r"] * ratio, r["r"] * ratio)
+
+
+class NotesPage(ScenePage):
+    """流动颜料场景"""
+
     name = "Notes"
     bg_colors = ((4, 24, 18), (10, 42, 34), (20, 66, 50))
     accent = (120, 230, 180)
 
+    def _init_scene(self):
+        self.blobs = []
+        for _ in range(8):
+            self.blobs.append({
+                "x": random.uniform(0, self.w),
+                "y": random.uniform(0, self.h),
+                "vx": random.uniform(-0.5, 0.5),
+                "vy": random.uniform(-0.4, 0.4),
+                "r": random.uniform(70, 180),
+                "hue": random.uniform(0, 1),
+            })
 
-class SettingsPage(PlaceholderPage):
+    def _tick_scene(self):
+        for b in self.blobs:
+            b["vx"] = max(-1.2, min(1.2, b["vx"] + random.uniform(-0.06, 0.06)))
+            b["vy"] = max(-1.0, min(1.0, b["vy"] + random.uniform(-0.06, 0.06)))
+            b["x"] += b["vx"]
+            b["y"] += b["vy"]
+            if b["x"] < -b["r"]:
+                b["x"] = self.w + b["r"]
+            if b["x"] > self.w + b["r"]:
+                b["x"] = -b["r"]
+            if b["y"] < -b["r"]:
+                b["y"] = self.h + b["r"]
+            if b["y"] > self.h + b["r"]:
+                b["y"] = -b["r"]
+
+    def _paint_scene(self, painter, w, h):
+        for b in self.blobs:
+            col = QColor.fromHsvF(b["hue"], 0.5, 0.95, 0.16)
+            grad = QRadialGradient(QPointF(b["x"], b["y"]), b["r"])
+            grad.setColorAt(0.0, col)
+            grad.setColorAt(1.0, QColor(col.red(), col.green(), col.blue(), 0))
+            painter.setBrush(QBrush(grad))
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(QPointF(b["x"], b["y"]), b["r"], b["r"])
+
+
+class SettingsPage(ScenePage):
+    """极光波浪场景"""
+
     name = "Settings"
     bg_colors = ((10, 10, 30), (20, 24, 52), (36, 44, 80))
     accent = (170, 160, 255)
 
+    def _init_scene(self):
+        self.bands = []
+        for i in range(4):
+            self.bands.append({
+                "amp": random.uniform(22, 55),
+                "freq": random.uniform(0.004, 0.009),
+                "phase": random.uniform(0, math.pi * 2),
+                "y0": random.uniform(0.15, 0.55) * self.h,
+                "hue": random.uniform(-0.08, 0.18),
+            })
 
-class DiaryPage(PlaceholderPage):
+    def _tick_scene(self):
+        for b in self.bands:
+            b["phase"] += 0.018
+
+    def _paint_scene(self, painter, w, h):
+        for b in self.bands:
+            path = QPainterPath()
+            path.moveTo(0, b["y0"] + math.sin(b["phase"]) * b["amp"])
+            for x in range(0, w + 1, 12):
+                y = b["y0"] + math.sin(x * b["freq"] + b["phase"]) * b["amp"]
+                path.lineTo(x, y)
+            path.lineTo(w, h)
+            path.lineTo(0, h)
+            path.closeSubpath()
+            grad = QLinearGradient(0, 0, 0, h)
+            col = QColor.fromHsvF(0.55 + b["hue"], 0.6, 0.95, 0.22)
+            grad.setColorAt(0.0, col)
+            grad.setColorAt(1.0, QColor(col.red(), col.green(), col.blue(), 0))
+            painter.setBrush(QBrush(grad))
+            painter.setPen(Qt.NoPen)
+            painter.drawPath(path)
+
+
+class DiaryPage(ScenePage):
+    """暖色余烬飘升场景"""
+
     name = "Diary"
     bg_colors = ((30, 12, 6), (56, 24, 12), (86, 42, 22))
     accent = (255, 190, 130)
+
+    def _init_scene(self):
+        self.embers = []
+        for _ in range(40):
+            self.embers.append({
+                "x": random.uniform(0, self.w),
+                "y": random.uniform(0, self.h),
+                "vx": random.uniform(-0.3, 0.3),
+                "vy": random.uniform(-0.9, -0.25),
+                "size": random.uniform(1.5, 4),
+                "tw": random.uniform(0, math.pi * 2),
+            })
+
+    def _tick_scene(self):
+        for p in self.embers:
+            p["x"] += p["vx"]
+            p["y"] += p["vy"]
+            p["tw"] += 0.08
+            if p["y"] < -20:
+                p["y"] = self.h + 20
+                p["x"] = random.uniform(0, self.w)
+
+    def _paint_scene(self, painter, w, h):
+        for p in self.embers:
+            a = int(110 + 110 * math.sin(p["tw"]))
+            a = max(20, min(210, a))
+            painter.setBrush(QBrush(QColor(255, 200, 140, a)))
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(QPointF(p["x"], p["y"]), p["size"], p["size"])
 
 
 # 页面注册表：以后新增功能页时，把页面类加进这个列表即可。
