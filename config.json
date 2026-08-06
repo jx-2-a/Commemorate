@@ -16,12 +16,10 @@
         "use_api": true,
         "files": [
             "config.json",
-            "rules.txt",
             "TimerPageWords.csv",
             "sync_tag.txt"
         ],
         "push_files": [
-            "rules.txt"
         ],
         "auto_pull": true,
         "push_token_env": "GITHUB_TOKEN"

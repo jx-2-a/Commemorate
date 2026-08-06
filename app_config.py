@@ -176,9 +176,8 @@ class ConfigManager:
                 "repo_name": "my-app-data",
                 "branch": "main",
                 "use_api": True,
-                "files": ["config.json", "rules.txt", "TimerPageWords.csv",
-                          "sync_tag.txt"],
-                "push_files": ["rules.txt"],
+                "files": ["config.json", "TimerPageWords.csv", "sync_tag.txt"],
+                "push_files": [],
                 "auto_pull": True,
                 "push_token_env": "GITHUB_TOKEN"
             },
@@ -191,8 +190,8 @@ class ConfigManager:
                 "local_users": []
             },
             "commemorate": {
-                "date": "2021-06-15", "time": "20:30",
-                "title": "遇见你", "subtitle": "是我一生中最美丽的意外"
+                "date": "", "time": "",
+                "title": "", "subtitle": ""
             },
             "remembered": {"username": "", "remember_me": False}
         }
@@ -260,13 +259,12 @@ class ConfigManager:
     @property
     def sync_files(self):
         return self._data.get("sync", {}).get(
-            "files", ["config.json", "rules.txt", "TimerPageWords.csv",
-                      "sync_tag.txt"]
+            "files", ["config.json", "TimerPageWords.csv", "sync_tag.txt"]
         )
 
     @property
     def sync_push_files(self):
-        return self._data.get("sync", {}).get("push_files", ["data.csv", "rules.txt"])
+        return self._data.get("sync", {}).get("push_files", [])
 
     @property
     def sync_auto_pull(self):
@@ -320,19 +318,19 @@ class ConfigManager:
 
     @property
     def commemorative_date(self):
-        return self._data.get("commemorate", {}).get("date", "2021-06-15")
+        return self._data.get("commemorate", {}).get("date", "")
 
     @property
     def commemorative_time(self):
-        return self._data.get("commemorate", {}).get("time", "20:30")
+        return self._data.get("commemorate", {}).get("time", "")
 
     @property
     def commemorative_title(self):
-        return self._data.get("commemorate", {}).get("title", "遇见你")
+        return self._data.get("commemorate", {}).get("title", "")
 
     @property
     def commemorative_subtitle(self):
-        return self._data.get("commemorate", {}).get("subtitle", "是我一生中最美丽的意外")
+        return self._data.get("commemorate", {}).get("subtitle", "")
 
     @property
     def anniversaries_path(self):
