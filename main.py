@@ -1236,6 +1236,10 @@ if __name__ == "__main__":
         """启动后台同步线程（不阻塞 UI）：用户信息 + 其他数据 + 静默版本检查"""
         if sync_running["value"]:
             return
+        # 未配置私有仓库（连接设置）时跳过同步，避免无效请求
+        if not (config.sync_repo_owner and config.sync_repo_name):
+            finalize_sync({"success": True, "sync_errors": [], "preflight": None})
+            return
         sync_running["value"] = True
         login.update_sync_state("syncing")
         from PyQt5.QtCore import QThread
@@ -1357,7 +1361,8 @@ if __name__ == "__main__":
     if debug_mode:
         # 调试模式：跳过登录与同步，直接进入主窗口
         finalize_sync({"success": True, "sync_errors": [], "preflight": None})
-    elif config.sync_auto_pull and "--skip-sync" not in args:
+    elif (config.sync_auto_pull and config.sync_repo_owner
+          and config.sync_repo_name and "--skip-sync" not in args):
         # 等登录窗口出现后再启动同步，避免启动过早导致网络请求失败
         QTimer.singleShot(500, start_sync_thread)
     else:

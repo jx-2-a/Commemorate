@@ -176,7 +176,7 @@ class ConfigManager:
             },
             "sync": {
                 "repo_owner": "",
-                "repo_name": "my-app-data",
+                "repo_name": "",
                 "branch": "main",
                 "use_api": True,
                 "files": ["config.json", "TimerPageWords.csv", "sync_tag.txt"],
@@ -253,7 +253,7 @@ class ConfigManager:
     def sync_repo_name(self):
         if self._connection.get("repo_name"):
             return self._connection["repo_name"]
-        return self._data.get("sync", {}).get("repo_name", "my-app-data")
+        return self._data.get("sync", {}).get("repo_name", "")
 
     @property
     def sync_branch(self):
