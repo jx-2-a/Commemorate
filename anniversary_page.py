@@ -321,8 +321,6 @@ class AnniversaryStore:
         self.anniversaries = self._load_list(self.list_path)
         self.deleted_ids = set(self._load_list(self.deleted_list_path))
         self._migrate_legacy()
-        if not self.anniversaries:
-            self._seed_default()
         # 记录在工作区打开后才加载（登录同步后由页面 refresh 调用）
         self.records = []
 
@@ -392,24 +390,6 @@ class AnniversaryStore:
         except Exception:
             pass
         return []
-
-    def _seed_default(self):
-        """First run: seed from config so the page is not empty"""
-        if self.zip_path.exists():
-            return  # 已有本地加密 zip，等工作区解压恢复，不要覆盖
-        dt = self.config.commemorative_date
-        try:
-            date.fromisoformat(dt)
-        except Exception:
-            dt = "2021-06-15"
-        self.anniversaries = [{
-            "id": "default",
-            "name": self.config.commemorative_title or "Anniversary",
-            "calendar": "solar",
-            "date": dt,
-            "note": "",
-        }]
-        self.save_anniversaries()
 
     # ---------- 写入 ----------
 
