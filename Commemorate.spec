@@ -8,6 +8,7 @@ a = Analysis(
     datas=[
         ('config.json', '.'),
         ('TimerPageWords.csv', '.'),
+        ('favicon.ico', '.'),
     ],
     hiddenimports=['PyQt5.QtNetwork', 'PyQt5.QtMultimedia',
                    'PyQt5.QtMultimediaWidgets'],
@@ -35,6 +36,7 @@ exe = EXE(
     runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
+    icon='favicon.ico',
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,

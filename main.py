@@ -19,7 +19,7 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import (
     QPainter, QColor, QFont, QRadialGradient, QLinearGradient,
-    QPen, QBrush, QPainterPath, QFontMetrics, QCursor
+    QPen, QBrush, QPainterPath, QFontMetrics, QCursor, QIcon
 )
 from PyQt5.QtWidgets import QApplication, QWidget
 
@@ -1159,6 +1159,15 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     app.setApplicationName("Commemorate")
+
+    # 应用图标（开发模式读取项目根目录，打包后读取内置资源）
+    icon_path = (
+        Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "favicon.ico"
+        if getattr(sys, "frozen", False)
+        else Path(__file__).resolve().parent / "favicon.ico"
+    )
+    if icon_path.is_file():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     config = ConfigManager("config.json")
     args = sys.argv[1:]
