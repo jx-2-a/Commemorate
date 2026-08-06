@@ -2246,12 +2246,7 @@ class AnniversaryRecordsPage:
         if self.frame < self._ignore_release_until:
             # 双击序列的第二次按下释放，忽略，避免误触发
             return True
-        if not self._occurrences:
-            return False
-        # 底部竖线切换器（点击 / 箭头）
-        if self._selector.on_release(pos):
-            return True
-        # 右下角三个图标按钮
+        # 右下角三个图标按钮（即使没有纪念日，“设置纪念日”也应可用）
         if self._actions_opacity > 0.2:
             for i, r in enumerate(self._action_rects()):
                 if r.contains(pos):
@@ -2262,6 +2257,11 @@ class AnniversaryRecordsPage:
                     else:
                         self._open_settings()
                     return True
+        if not self._occurrences:
+            return False
+        # 底部竖线切换器（点击 / 箭头）
+        if self._selector.on_release(pos):
+            return True
         # 音频进度条：单击跳转（优先于卡片动作）
         for rect, action, rec in self._hit_rects:
             if action == "seek" and rect.translated(0, -self._scroll).contains(pos):
