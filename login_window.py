@@ -802,6 +802,7 @@ class LoginWindow(QDialog):
         self.remember_check.setVisible(True)
         self.login_btn.setText("登  录")
         self.login_btn.setGeometry(70, 335, 280, 44)
+        self.login_btn.setVisible(True)
         self.register_btn.setVisible(True)
         self.settings_btn.setVisible(True)
         self.back_btn.setVisible(False)
@@ -833,6 +834,7 @@ class LoginWindow(QDialog):
         self.remember_check.setVisible(False)
         self.login_btn.setText("注  册")
         self.login_btn.setGeometry(70, 330, 280, 44)
+        self.login_btn.setVisible(True)
         self.register_btn.setVisible(False)
         self.settings_btn.setVisible(False)
         self.back_btn.setVisible(True)
@@ -1146,7 +1148,9 @@ class LoginWindow(QDialog):
                 background: transparent;
             }}
         """)
-        self.error_label.setVisible(True)
+        # 同步提示只在登录/注册页显示，避免覆盖连接设置页的按钮
+        if self._page in ("login", "register"):
+            self.error_label.setVisible(True)
 
     # ---- 更新面板（登录成功后，发现新版本时替换登录表单显示）----
 
