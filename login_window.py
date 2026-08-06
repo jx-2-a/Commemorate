@@ -782,10 +782,10 @@ class LoginWindow(QDialog):
     # ── 登录逻辑 ────────────────────────────────────────
 
     def _on_submit(self):
-        """登录页 = 登录，注册页 = 注册"""
+        """登录页 = 登录，注册页 = 注册，其他页面（更新/设置）忽略回车"""
         if self._page == "login":
             self._attempt_login()
-        else:
+        elif self._page == "register":
             self._do_register()
 
     def _show_login_page(self):
