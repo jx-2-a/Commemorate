@@ -5,6 +5,7 @@ LoginWindow — 登录前置窗口
 import sys
 import math
 import json
+from pathlib import Path
 
 from PyQt5.QtCore import Qt, QTimer, QPointF, QPropertyAnimation, QEasingCurve, pyqtProperty, pyqtSignal, QUrl
 from PyQt5.QtGui import (
@@ -14,7 +15,7 @@ from PyQt5.QtGui import (
 from PyQt5.QtWidgets import (
     QDialog, QLineEdit, QCheckBox, QPushButton,
     QLabel, QVBoxLayout, QHBoxLayout, QGraphicsDropShadowEffect,
-    QApplication, QProgressBar
+    QApplication, QProgressBar, QFileDialog
 )
 from PyQt5.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from app_config import ConfigManager, verify_password, hash_password
@@ -213,6 +214,71 @@ class LoginWindow(QDialog):
         self.refresh_btn.clicked.connect(lambda: self.retry_sync.emit())
         self.refresh_btn.setVisible(False)
 
+        # ── 连接设置 ────────────────────────────────────
+        # 登录页底部入口按钮
+        self.settings_btn = QPushButton("⚙ 连接设置", self)
+        self.settings_btn.setGeometry(70, 470, 280, 26)
+        self.settings_btn.setCursor(Qt.PointingHandCursor)
+        self.settings_btn.setFocusPolicy(Qt.NoFocus)
+        self.settings_btn.clicked.connect(self._show_settings_page)
+
+        # 设置页输入项（token + 私有仓库，加密保存，不随远程同步）
+        self.conn_owner_input = ShakeableLineEdit(self)
+        self.conn_owner_input.setPlaceholderText("仓库所有者（GitHub 用户名）")
+        self.conn_owner_input.setGeometry(70, 150, 280, 36)
+        self.conn_owner_input.setAlignment(Qt.AlignCenter)
+        self._add_shadow(self.conn_owner_input)
+
+        self.conn_repo_input = ShakeableLineEdit(self)
+        self.conn_repo_input.setPlaceholderText("数据仓库名")
+        self.conn_repo_input.setGeometry(70, 194, 280, 36)
+        self.conn_repo_input.setAlignment(Qt.AlignCenter)
+        self._add_shadow(self.conn_repo_input)
+
+        self.conn_branch_input = ShakeableLineEdit(self)
+        self.conn_branch_input.setPlaceholderText("分支（默认 main）")
+        self.conn_branch_input.setText("main")
+        self.conn_branch_input.setGeometry(70, 238, 280, 36)
+        self.conn_branch_input.setAlignment(Qt.AlignCenter)
+        self._add_shadow(self.conn_branch_input)
+
+        self.conn_token_input = ShakeableLineEdit(self)
+        self.conn_token_input.setPlaceholderText("GitHub Token（仅本机加密保存）")
+        self.conn_token_input.setEchoMode(QLineEdit.Password)
+        self.conn_token_input.setGeometry(70, 282, 280, 36)
+        self.conn_token_input.setAlignment(Qt.AlignCenter)
+        self._add_shadow(self.conn_token_input)
+
+        self.conn_pwd_input = ShakeableLineEdit(self)
+        self.conn_pwd_input.setPlaceholderText("加密密码（发给好友时需告知）")
+        self.conn_pwd_input.setEchoMode(QLineEdit.Password)
+        self.conn_pwd_input.setGeometry(70, 326, 280, 36)
+        self.conn_pwd_input.setAlignment(Qt.AlignCenter)
+        self._add_shadow(self.conn_pwd_input)
+
+        self.conn_status = QLabel("", self)
+        self.conn_status.setAlignment(Qt.AlignCenter)
+        self.conn_status.setGeometry(70, 368, 280, 26)
+
+        self.save_conn_btn = QPushButton("保  存", self)
+        self.save_conn_btn.setGeometry(70, 402, 88, 34)
+        self.save_conn_btn.clicked.connect(self._save_connection)
+
+        self.import_conn_btn = QPushButton("导入文件", self)
+        self.import_conn_btn.setGeometry(166, 402, 88, 34)
+        self.import_conn_btn.clicked.connect(self._import_connection)
+
+        self.export_conn_btn = QPushButton("导出文件", self)
+        self.export_conn_btn.setGeometry(262, 402, 88, 34)
+        self.export_conn_btn.clicked.connect(self._export_connection)
+
+        for w in (self.conn_owner_input, self.conn_repo_input,
+                  self.conn_branch_input, self.conn_token_input,
+                  self.conn_pwd_input, self.conn_status,
+                  self.save_conn_btn, self.import_conn_btn,
+                  self.export_conn_btn):
+            w.setVisible(False)
+
         # ---- 更新面板（登录成功发现新版本时，替换登录表单显示在同一窗口）----
         self.upd_title = QLabel("发现新版本", self)
         self.upd_title.setAlignment(Qt.AlignCenter)
@@ -334,6 +400,44 @@ class LoginWindow(QDialog):
         self.username_input.setStyleSheet(input_style)
         self.password_input.setStyleSheet(input_style)
         self.confirm_input.setStyleSheet(input_style)
+        self.conn_owner_input.setStyleSheet(input_style)
+        self.conn_repo_input.setStyleSheet(input_style)
+        self.conn_branch_input.setStyleSheet(input_style)
+        self.conn_token_input.setStyleSheet(input_style)
+        self.conn_pwd_input.setStyleSheet(input_style)
+
+        self.settings_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: {TEXT_MUTED.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 12px;
+                border: none;
+                background: transparent;
+            }}
+            QPushButton:hover {{ color: {ACCENT_PINK.name()}; }}
+        """)
+        conn_btn_style = f"""
+            QPushButton {{
+                color: {TEXT_LIGHT.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 13px;
+                border: 1.5px solid {INPUT_BORDER.name()};
+                border-radius: 10px;
+                background: rgba(40, 20, 60, 180);
+            }}
+            QPushButton:hover {{ border-color: {ACCENT_PINK.name()}; }}
+        """
+        self.save_conn_btn.setStyleSheet(conn_btn_style)
+        self.import_conn_btn.setStyleSheet(conn_btn_style)
+        self.export_conn_btn.setStyleSheet(conn_btn_style)
+        self.conn_status.setStyleSheet(f"""
+            QLabel {{
+                color: {TEXT_MUTED.name()};
+                font-family: "Microsoft YaHei";
+                font-size: 12px;
+                background: transparent;
+            }}
+        """)
 
         self.remember_check.setStyleSheet(f"""
             QCheckBox {{
@@ -697,9 +801,16 @@ class LoginWindow(QDialog):
         self.login_btn.setText("登  录")
         self.login_btn.setGeometry(70, 335, 280, 44)
         self.register_btn.setVisible(True)
+        self.settings_btn.setVisible(True)
         self.back_btn.setVisible(False)
         self.error_label.setVisible(False)
         self._error_timer.stop()
+        for w in (self.conn_owner_input, self.conn_repo_input,
+                  self.conn_branch_input, self.conn_token_input,
+                  self.conn_pwd_input, self.conn_status,
+                  self.save_conn_btn, self.import_conn_btn,
+                  self.export_conn_btn):
+            w.setVisible(False)
 
     def _show_register_page(self):
         """切换到注册页"""
@@ -719,13 +830,117 @@ class LoginWindow(QDialog):
         self.login_btn.setText("注  册")
         self.login_btn.setGeometry(70, 330, 280, 44)
         self.register_btn.setVisible(False)
+        self.settings_btn.setVisible(False)
         self.back_btn.setVisible(True)
         self.error_label.setVisible(False)
         self._error_timer.stop()
+        for w in (self.conn_owner_input, self.conn_repo_input,
+                  self.conn_branch_input, self.conn_token_input,
+                  self.conn_pwd_input, self.conn_status,
+                  self.save_conn_btn, self.import_conn_btn,
+                  self.export_conn_btn):
+            w.setVisible(False)
         self.username_input.clear()
         self.password_input.clear()
         self.confirm_input.clear()
         self.username_input.setFocus()
+
+    def _show_settings_page(self):
+        """切换到连接设置页（token + 私有仓库，加密保存）"""
+        self._page = "settings"
+        self.title_label.setText("✦  连接设置  ✦")
+        self.subtitle_label.setVisible(False)
+        self.divider_label.setVisible(False)
+        for w in (self.username_input, self.password_input, self.confirm_input,
+                  self.remember_check, self.login_btn, self.register_btn,
+                  self.error_label, self.settings_btn):
+            w.setVisible(False)
+        self._error_timer.stop()
+
+        prof = self.config.connection_profile
+        self.conn_owner_input.setText(prof.get("repo_owner", ""))
+        self.conn_repo_input.setText(prof.get("repo_name", ""))
+        self.conn_branch_input.setText(prof.get("branch", "main"))
+        self.conn_token_input.setText(prof.get("token", ""))
+        self.conn_pwd_input.clear()
+        self.conn_status.setText("")
+        for w in (self.conn_owner_input, self.conn_repo_input,
+                  self.conn_branch_input, self.conn_token_input,
+                  self.conn_pwd_input, self.conn_status,
+                  self.save_conn_btn, self.import_conn_btn,
+                  self.export_conn_btn):
+            w.setVisible(True)
+        self.back_btn.setVisible(True)
+
+    def _save_connection(self):
+        """保存连接配置（加密到本地，不随远程同步）"""
+        owner = self.conn_owner_input.text().strip()
+        repo = self.conn_repo_input.text().strip()
+        password = self.conn_pwd_input.text()
+        if not owner or not repo:
+            self.conn_status.setText("请填写仓库所有者与仓库名")
+            return
+        if not password:
+            self.conn_status.setText("请设置加密密码")
+            return
+        data = {
+            "repo_owner": owner,
+            "repo_name": repo,
+            "branch": self.conn_branch_input.text().strip() or "main",
+            "token": self.conn_token_input.text().strip(),
+        }
+        try:
+            self.config.save_connection(data, password)
+        except Exception as e:
+            self.conn_status.setText(f"保存失败：{e}")
+            return
+        self.conn_status.setText("已保存，同步将使用该仓库")
+        self.retry_sync.emit()
+
+    def _import_connection(self):
+        """导入好友分享的加密连接配置"""
+        password = self.conn_pwd_input.text()
+        if not password:
+            self.conn_status.setText("导入前请先填写加密密码")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择加密的连接配置文件", "", "连接配置 (*.dat);;所有文件 (*)"
+        )
+        if not path:
+            return
+        try:
+            from connection import import_profile
+            data = import_profile(
+                self.config, Path(path).read_text(encoding="ascii"), password
+            )
+        except Exception as e:
+            self.conn_status.setText(f"导入失败：{e}")
+            return
+        self.conn_owner_input.setText(data.get("repo_owner", ""))
+        self.conn_repo_input.setText(data.get("repo_name", ""))
+        self.conn_branch_input.setText(data.get("branch", "main"))
+        self.conn_token_input.setText(data.get("token", ""))
+        self.conn_status.setText("导入成功，已使用该仓库")
+        self.retry_sync.emit()
+
+    def _export_connection(self):
+        """导出当前连接配置为加密文件（发给好友）"""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "导出连接配置", "connection.dat", "连接配置 (*.dat)"
+        )
+        if not path:
+            return
+        try:
+            from connection import export_profile
+            blob = export_profile(self.config, "")
+            if not blob:
+                self.conn_status.setText("尚未保存连接配置，无法导出")
+                return
+            Path(path).write_text(blob, encoding="ascii")
+        except Exception as e:
+            self.conn_status.setText(f"导出失败：{e}")
+            return
+        self.conn_status.setText("已导出，发送给好友并告知加密密码")
 
     def _do_register(self):
         """注册新账号（与登录同一窗口）"""
@@ -958,6 +1173,7 @@ class LoginWindow(QDialog):
         self.remember_check.setVisible(False)
         self.login_btn.setVisible(False)
         self.register_btn.setVisible(False)
+        self.settings_btn.setVisible(False)
         self.back_btn.setVisible(False)
         self.error_label.setVisible(False)
         self._error_timer.stop()

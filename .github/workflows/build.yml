@@ -23,6 +23,7 @@ jobs:
           pip install pyinstaller
           pip install PyQt5
           pip install pyzipper
+          pip install cryptography
 
       - name: Build exe
         run: pyinstaller --noconfirm Commemorate.spec

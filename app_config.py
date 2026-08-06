@@ -9,6 +9,8 @@ import shutil
 import hashlib
 from pathlib import Path
 
+from connection import load_profile, save_profile
+
 
 class ConfigManager:
     """统一管理 config.json 的读取、写入和访问"""
@@ -18,6 +20,7 @@ class ConfigManager:
         self._data = {}
         self._local_state = {}
         self._load()
+        self._connection = load_profile(self) or {}
 
     # ---------- 路径 ----------
 
@@ -242,14 +245,20 @@ class ConfigManager:
 
     @property
     def sync_repo_owner(self):
+        if self._connection.get("repo_owner"):
+            return self._connection["repo_owner"]
         return self._data.get("sync", {}).get("repo_owner", "")
 
     @property
     def sync_repo_name(self):
+        if self._connection.get("repo_name"):
+            return self._connection["repo_name"]
         return self._data.get("sync", {}).get("repo_name", "my-app-data")
 
     @property
     def sync_branch(self):
+        if self._connection.get("branch"):
+            return self._connection["branch"]
         return self._data.get("sync", {}).get("branch", "main")
 
     @property
@@ -275,11 +284,28 @@ class ConfigManager:
         return self._data.get("sync", {}).get("push_token_env", "GITHUB_TOKEN")
 
     def sync_token(self):
-        """读取 GitHub 令牌：优先环境变量，其次本地配置（local_state.json）"""
+        """读取 GitHub 令牌：优先加密连接配置，其次环境变量，最后本地配置"""
+        if self._connection.get("token"):
+            return self._connection["token"]
         token = os.environ.get(self.sync_push_token_env or "GITHUB_TOKEN", "")
         if token:
             return token
         return self._local_state.get("github_token", "")
+
+    @property
+    def connection_profile(self):
+        """当前加密连接配置（token + 私有仓库）"""
+        return dict(self._connection)
+
+    def save_connection(self, data: dict, password: str):
+        """保存加密连接配置并立即生效"""
+        save_profile(self, data, password)
+        self._connection = dict(data)
+        return dict(self._connection)
+
+    def reload_connection(self):
+        """重新读取加密连接配置（导入/删除后调用）"""
+        self._connection = load_profile(self) or {}
 
     def set_local_token(self, token):
         """把令牌保存到本地配置（gitignored），不依赖环境变量"""

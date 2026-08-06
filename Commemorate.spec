@@ -11,7 +11,7 @@ a = Analysis(
         ('favicon.ico', '.'),
     ],
     hiddenimports=['PyQt5.QtNetwork', 'PyQt5.QtMultimedia',
-                   'PyQt5.QtMultimediaWidgets'],
+                   'PyQt5.QtMultimediaWidgets', 'cryptography'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
