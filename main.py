@@ -610,7 +610,7 @@ class CommemorateWindow(QWidget):
         self._page_fade = 1.0
         self._trans_old = None
 
-        self.setWindowTitle(f"💖 {config.app_name}")
+        self.setWindowTitle(config.app_name)
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
