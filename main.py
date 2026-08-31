@@ -197,12 +197,18 @@ class CountdownPage:
         self.time_displayed = True
 
     def _elapsed_dhm(self) -> str:
-        """从开始时间到现在的间隔，格式：1877D 05H 32M"""
+        """计算开始到当前或结束时刻的间隔，格式：1877D 05H 32M。"""
         try:
             past = datetime.strptime(
                 f"{self._comm_date} {self._comm_time}", "%Y-%m-%d %H:%M"
             )
-            elapsed = datetime.now() - past
+            current = datetime.now()
+            end = self.config.commemorative_end_datetime()
+            if end is not None:
+                current = min(current, end)
+            elapsed = current - past
+            if elapsed.total_seconds() < 0:
+                elapsed = current - current
             days = max(0, elapsed.days)
             hours = max(0, elapsed.seconds // 3600)
             minutes = max(0, (elapsed.seconds % 3600) // 60)
@@ -278,6 +284,19 @@ class CountdownPage:
             tw = fm.horizontalAdvance(timer_text)
             painter.drawText(int(cx - tw / 2), timer_y, timer_text)
 
+            ended = self.config.is_commemoration_ended()
+            if ended:
+                end_text = (
+                    f"已于 {self.config.commemorative_end_date} "
+                    f"{self.config.commemorative_end_time} 结束"
+                )
+                end_font = QFont("Microsoft YaHei", 13)
+                painter.setFont(end_font)
+                painter.setPen(QColor(220, 190, 210, int(title_alpha * 0.82)))
+                efm = QFontMetrics(end_font)
+                ew = efm.horizontalAdvance(end_text)
+                painter.drawText(int(cx - ew / 2), timer_y + 48, end_text)
+
             if self._comm_message:
                 msg_font = QFont("Microsoft YaHei", 20)
                 msg_font.setItalic(True)
@@ -285,7 +304,11 @@ class CountdownPage:
                 painter.setPen(QColor(235, 205, 235, int(title_alpha * 0.9)))
                 fm2 = QFontMetrics(msg_font)
                 mw = fm2.horizontalAdvance(self._comm_message)
-                painter.drawText(int(cx - mw / 2), msg_y, self._comm_message)
+                painter.drawText(
+                    int(cx - mw / 2),
+                    msg_y + (38 if ended else 0),
+                    self._comm_message,
+                )
 
         # ── 6. 底部当前时间 ──────────────────────────────
         if self.time_displayed:
@@ -582,6 +605,7 @@ class DiaryPage(ScenePage):
 
 # 第二个页面：纪念日记录（独立文件实现，含农历换算 / 时间线 / 上传）
 from anniversary_page import AnniversaryRecordsPage
+from record_page import RecordPage
 
 
 # 页面注册表：以后新增功能页时，把页面类加进这个列表即可。
@@ -589,6 +613,7 @@ from anniversary_page import AnniversaryRecordsPage
 PAGE_CLASSES = [
     CountdownPage,
     AnniversaryRecordsPage,
+    RecordPage,
     MusicPage,
     NotesPage,
     SettingsPage,
@@ -705,6 +730,10 @@ class CommemorateWindow(QWidget):
 
     def request_data_push(self, files, done_cb=None):
         """后台推送纪念日数据 / 附件到同步仓库（不阻塞界面）"""
+        if self.config.is_commemoration_ended():
+            if done_cb:
+                done_cb([])
+            return
         if not files:
             if done_cb:
                 done_cb([])
@@ -1101,13 +1130,13 @@ class CommemorateWindow(QWidget):
     def closeEvent(self, event):
         # 关闭前停止动画定时器，避免窗口销毁后 _tick 继续访问已删除对象
         self.timer.stop()
-        page = self._current_page()
-        if hasattr(page, "_stop_audio"):
-            page._stop_audio()
-        if hasattr(page, "_back_to_timeline"):
-            page._back_to_timeline()
-        if hasattr(page, "_on_app_close"):
-            page._on_app_close()   # 退出前：回写加密 zip + 清理临时目录
+        for page in self.pages:
+            if hasattr(page, "_stop_audio"):
+                page._stop_audio()
+            if hasattr(page, "_back_to_timeline"):
+                page._back_to_timeline()
+            if hasattr(page, "_on_app_close"):
+                page._on_app_close()   # 退出前：回写加密 zip + 等待同步后清理
         # 若有后台推送尚未完成：隐藏窗口，等推送全部结束后再退出
         if self._push_threads:
             event.ignore()
@@ -1116,9 +1145,9 @@ class CommemorateWindow(QWidget):
             self._wait_push_and_quit()
             return
         super().closeEvent(event)
-        page = self._current_page()
-        if hasattr(page, "delete_workspace"):
-            page.delete_workspace()   # 无待推送时直接删除解密目录
+        for page in self.pages:
+            if hasattr(page, "delete_workspace"):
+                page.delete_workspace()   # 无待推送时直接删除解密目录
         self._quit_app()
 
     def _quit_app(self):
@@ -1130,9 +1159,9 @@ class CommemorateWindow(QWidget):
         self._close_waited_at += 1
         # 最多等约 120 秒；正常推送（含大附件）远快于此
         if not self._push_threads or self._close_waited_at > 600:
-            page = self._current_page()
-            if hasattr(page, "delete_workspace"):
-                page.delete_workspace()   # 推送完成后删除解密目录
+            for page in self.pages:
+                if hasattr(page, "delete_workspace"):
+                    page.delete_workspace()   # 推送完成后删除解密目录
             self._quit_app()
             return
         QTimer.singleShot(200, self._wait_push_and_quit)
@@ -1198,6 +1227,10 @@ if __name__ == "__main__":
         from PyQt5.QtWidgets import QMessageBox
         from data_sync import DataSyncManager, run_sync
 
+        if config.is_commemoration_ended():
+            print("纪念计时已结束：当前为本地模式，不访问远程仓库")
+            sys.exit(0)
+
         idx = args.index("--sync-push")
         files = [a for a in args[idx + 1:] if not a.startswith("-")] or None
         sync_mgr = DataSyncManager(config)
@@ -1235,6 +1268,9 @@ if __name__ == "__main__":
     def start_sync_thread():
         """启动后台同步线程（不阻塞 UI）：用户信息 + 其他数据 + 静默版本检查"""
         if sync_running["value"]:
+            return
+        if config.is_commemoration_ended():
+            finalize_sync({"success": True, "sync_errors": [], "preflight": None})
             return
         # 未配置私有仓库（连接设置）时跳过同步，避免无效请求
         if not (config.sync_repo_owner and config.sync_repo_name):
@@ -1361,7 +1397,8 @@ if __name__ == "__main__":
     if debug_mode:
         # 调试模式：跳过登录与同步，直接进入主窗口
         finalize_sync({"success": True, "sync_errors": [], "preflight": None})
-    elif (config.sync_auto_pull and config.sync_repo_owner
+    elif (not config.is_commemoration_ended()
+          and config.sync_auto_pull and config.sync_repo_owner
           and config.sync_repo_name and "--skip-sync" not in args):
         # 等登录窗口出现后再启动同步，避免启动过早导致网络请求失败
         QTimer.singleShot(500, start_sync_thread)

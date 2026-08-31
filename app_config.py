@@ -7,6 +7,7 @@ import os
 import json
 import shutil
 import hashlib
+from datetime import datetime
 from pathlib import Path
 
 from connection import load_profile, save_profile
@@ -95,6 +96,19 @@ class ConfigManager:
                 except Exception:
                     pass
 
+        # 打包内置的纪念起止时间是应用的本地基线。这样更新 exe 后，即使
+        # appdata/config.json 已存在，也能立即进入结束后的本地模式。
+        bundled = self._bundled_config_path()
+        if bundled is not None and bundled.exists():
+            try:
+                with open(bundled, "r", encoding="utf-8") as f:
+                    built_in = json.load(f)
+                commemorate = built_in.get("commemorate", {})
+                self._data["commemorate"] = self._deep_merge(
+                    self._data.get("commemorate", {}), commemorate)
+            except Exception:
+                pass
+
         # 叠加私有仓库同步下来的远程配置（网络引导项除外，避免循环依赖）
         overlay = self.data_dir / "config.json"
         if overlay.exists():
@@ -153,11 +167,12 @@ class ConfigManager:
         return result
 
     def save(self):
-        """只持久化引导相关配置（app/update/sync），账号与纪念信息以远程为准"""
+        """持久化引导配置和本地纪念起止时间。"""
         slim = {
             "app": self._data.get("app", {}),
             "update": self._data.get("update", {}),
             "sync": self._data.get("sync", {}),
+            "commemorate": self._data.get("commemorate", {}),
         }
         with open(self._config_path, "w", encoding="utf-8") as f:
             json.dump(slim, f, ensure_ascii=False, indent=4)
@@ -194,6 +209,7 @@ class ConfigManager:
             },
             "commemorate": {
                 "date": "", "time": "",
+                "end_date": "", "end_time": "",
                 "title": "", "subtitle": ""
             },
             "remembered": {"username": "", "remember_me": False}
@@ -351,6 +367,38 @@ class ConfigManager:
         return self._data.get("commemorate", {}).get("time", "")
 
     @property
+    def commemorative_end_date(self):
+        """感情结束日期；留空表示计时仍在继续。"""
+        return self._data.get("commemorate", {}).get("end_date", "")
+
+    @property
+    def commemorative_end_time(self):
+        """感情结束时间，支持 HH 或 HH:MM。"""
+        section = self._data.get("commemorate", {})
+        value = section.get("end_time") or section.get("end_hour", "")
+        if isinstance(value, int):
+            return f"{value:02d}:00"
+        value = str(value).strip()
+        return f"{value}:00" if value.isdigit() else value
+
+    def commemorative_end_datetime(self):
+        """解析结束时刻；配置缺失或格式无效时返回 None。"""
+        if not self.commemorative_end_date or not self.commemorative_end_time:
+            return None
+        try:
+            return datetime.strptime(
+                f"{self.commemorative_end_date} {self.commemorative_end_time}",
+                "%Y-%m-%d %H:%M",
+            )
+        except ValueError:
+            return None
+
+    def is_commemoration_ended(self, now=None):
+        """判断是否已到结束时刻，供计时和本地模式共用。"""
+        end = self.commemorative_end_datetime()
+        return end is not None and (now or datetime.now()) >= end
+
+    @property
     def commemorative_title(self):
         return self._data.get("commemorate", {}).get("title", "")
 
@@ -380,6 +428,18 @@ class ConfigManager:
         """本地纪念日加密 zip 的密码（可改默认值或远程配置覆盖）"""
         return self._data.get("anniversary", {}).get(
             "zip_password", "commemorate2026")
+
+    @property
+    def record_dir(self):
+        """远程日常记录内容根目录（remote/record/，随仓库同步）。"""
+        d = self.data_dir / "record"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @property
+    def record_backup_path(self):
+        """日常记录的本地加密备份。"""
+        return self.local_dir / "record_backup.zip"
 
     @property
     def remembered_username(self):

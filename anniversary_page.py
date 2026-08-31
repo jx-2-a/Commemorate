@@ -2013,6 +2013,7 @@ class AnniversaryRecordsPage:
     bg_colors = ((6, 10, 28), (14, 30, 58), (26, 52, 86))
     accent = (150, 200, 255)
     EDGE_FADE = 64.0   # 内容上下边缘渐隐高度（px）
+    store_class = AnniversaryStore
 
     def __init__(self, config):
         self.config = config
@@ -2020,7 +2021,7 @@ class AnniversaryRecordsPage:
         self.frame = 0
         self.w = 0
         self.h = 0
-        self.store = AnniversaryStore(config)
+        self.store = self.store_class(config)
         self.current_user = "Me"
         self.push_callback = None
         self._host = None
