@@ -7,3 +7,5 @@
 - [completed] 写入实际结束时间 2026-08-30 20:39
 - [completed] 重新测试、打包并更新 D:\JinXi\APP\Commemorate
 - [completed] 提交全部源码改动并汇总验证结果
+- [completed] 本地冻结开关优先于结束日期，命中后自动写入 false
+- [completed] 验证、重新打包、更新安装目录并提交

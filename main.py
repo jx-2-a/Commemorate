@@ -284,7 +284,7 @@ class CountdownPage:
             tw = fm.horizontalAdvance(timer_text)
             painter.drawText(int(cx - tw / 2), timer_y, timer_text)
 
-            ended = self.config.is_commemoration_ended()
+            ended = self.config.is_commemoration_frozen()
             if ended:
                 end_text = (
                     f"已于 {self.config.commemorative_end_date} "
@@ -730,7 +730,7 @@ class CommemorateWindow(QWidget):
 
     def request_data_push(self, files, done_cb=None):
         """后台推送纪念日数据 / 附件到同步仓库（不阻塞界面）"""
-        if self.config.is_commemoration_ended():
+        if self.config.is_commemoration_frozen():
             if done_cb:
                 done_cb([])
             return
@@ -1227,7 +1227,7 @@ if __name__ == "__main__":
         from PyQt5.QtWidgets import QMessageBox
         from data_sync import DataSyncManager, run_sync
 
-        if config.is_commemoration_ended():
+        if config.is_commemoration_frozen():
             print("纪念计时已结束：当前为本地模式，不访问远程仓库")
             sys.exit(0)
 
@@ -1269,7 +1269,7 @@ if __name__ == "__main__":
         """启动后台同步线程（不阻塞 UI）：用户信息 + 其他数据 + 静默版本检查"""
         if sync_running["value"]:
             return
-        if config.is_commemoration_ended():
+        if config.is_commemoration_frozen():
             finalize_sync({"success": True, "sync_errors": [], "preflight": None})
             return
         # 未配置私有仓库（连接设置）时跳过同步，避免无效请求
@@ -1397,7 +1397,7 @@ if __name__ == "__main__":
     if debug_mode:
         # 调试模式：跳过登录与同步，直接进入主窗口
         finalize_sync({"success": True, "sync_errors": [], "preflight": None})
-    elif (not config.is_commemoration_ended()
+    elif (not config.is_commemoration_frozen()
           and config.sync_auto_pull and config.sync_repo_owner
           and config.sync_repo_name and "--skip-sync" not in args):
         # 等登录窗口出现后再启动同步，避免启动过早导致网络请求失败
