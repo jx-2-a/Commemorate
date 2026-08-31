@@ -9,5 +9,5 @@
 - [completed] 提交全部源码改动并汇总验证结果
 - [completed] 本地冻结开关优先于结束日期，命中后自动写入 false
 - [completed] 验证、重新打包、更新安装目录并提交
-- [in_progress] 清空 jx-2-a/Commemorate-data 的远程文件
-- [pending] 发布代码仓库 v1.3.11 并验证 GitHub Release
+- [pending] 清空 jx-2-a/Commemorate-data 的远程文件（等待恢复本地连接配置）
+- [completed] 发布代码仓库 v1.3.11 并验证 GitHub Release
