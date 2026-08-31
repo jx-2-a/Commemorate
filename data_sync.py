@@ -128,21 +128,21 @@ class DataSyncManager(QObject):
 
     def pull(self, files=None):
         """拉取远程内容；结束后仅保留本地缓存，不发起网络请求。"""
-        if self.config.is_commemoration_ended():
+        if self.config.is_commemoration_frozen():
             self._finish_local_only()
             return
         self._start("pull", files or self.config.sync_files)
 
     def push(self, files=None):
         """推送本地内容；本地模式下不读取或写入远程仓库。"""
-        if self.config.is_commemoration_ended():
+        if self.config.is_commemoration_frozen():
             self._finish_local_only()
             return
         self._start("push", files or self.config.sync_push_files)
 
     def delete_files(self, files):
         """删除远程仓库中的文件（Contents API DELETE，清理不再需要的资源）"""
-        if self.config.is_commemoration_ended():
+        if self.config.is_commemoration_frozen():
             self._finish_local_only()
             return
         self._mode = "delete"
@@ -597,7 +597,7 @@ class SyncWorker(QObject):
 
             # 在子线程内创建实例，确保网络对象绑定到本线程的事件循环
             cfg = ConfigManager(self._config_filename)
-            if cfg.is_commemoration_ended():
+            if cfg.is_commemoration_frozen():
                 self.finished.emit({
                     "success": True,
                     "sync_errors": [],
@@ -652,7 +652,8 @@ class SyncWorker(QObject):
             }
             if result["success"]:
                 cfg.reload()
-                if cfg.update_auto_check and cfg.update_check_url:
+                if (not cfg.is_commemoration_frozen()
+                        and cfg.update_auto_check and cfg.update_check_url):
                     um = UpdateManager(cfg)
                     pre = preflight_update(um, cfg)
                     if "error" in pre:

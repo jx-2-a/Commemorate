@@ -44,7 +44,7 @@ GitHub 私有仓库 my-app-data（配置与数据）
 4. 私有仓库放好 `config.json`、`data.csv`、`rules.txt`。远程 `config.json` 使用与本地相同的格式，`update` / `sync` 段会被忽略（防止循环依赖）。
 5. 远程 `config.json` 的 `auth` 段可配置注册策略：`allow_register`（是否开放注册）、`max_users`（用户数量上限）、`local_users`（管理账户与密码）。**账号信息一律来自远程**：登录校验、注册（写入 `auth.local_users`）都以远程配置为准，注册需要网络，远程写入成功才算注册成功；本地不保存任何账号。
 
-`commemorate` 段使用 `date` / `time` 配置开始时刻，使用 `end_date` / `end_time` 配置结束时刻（日期格式 `YYYY-MM-DD`，时间支持 `HH` 或 `HH:MM`）。结束字段留空时继续计时；到达结束时刻后首页计时冻结，应用停止同步和版本预检，只读取已经缓存在本机的配置与内容。
+`commemorate` 段使用 `date` / `time` 配置开始时刻，使用 `end_date` / `end_time` 配置结束时刻（日期格式 `YYYY-MM-DD`，时间支持 `HH` 或 `HH:MM`）。`active` 是本地冻结开关：启动时先读取它，若为 `false` 直接离线；仍为 `true` 时才检查结束时刻，命中后会自动写为 `false`。开发时修改项目根目录的 `config.json`；打包程序修改同目录的 `appdata/config.json`，重启后立即生效。若以后要重新启用，请修改日期并把 `active` 设为 `true`。结束字段留空时继续计时；到达结束时刻后首页计时冻结，应用停止同步和版本预检，只读取已经缓存在本机的配置与内容。纪念日时间线也会止于结束日期，不再生成之后的条目。
 
 本地 `local_state.json` 只保留两类数据：GitHub 令牌（`github_token`）和"记住我"勾选状态（`remembered`，含用户名），均不参与远程同步。
 

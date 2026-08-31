@@ -79,6 +79,7 @@ class ConfigManager:
     def _load(self):
         self._load_data()
         self._load_local_state()
+        self.freeze_if_ended()
 
     def _load_data(self):
         self._data = self._defaults()
@@ -95,19 +96,6 @@ class ConfigManager:
                     shutil.copyfile(bundled, self._config_path)
                 except Exception:
                     pass
-
-        # 打包内置的纪念起止时间是应用的本地基线。这样更新 exe 后，即使
-        # appdata/config.json 已存在，也能立即进入结束后的本地模式。
-        bundled = self._bundled_config_path()
-        if bundled is not None and bundled.exists():
-            try:
-                with open(bundled, "r", encoding="utf-8") as f:
-                    built_in = json.load(f)
-                commemorate = built_in.get("commemorate", {})
-                self._data["commemorate"] = self._deep_merge(
-                    self._data.get("commemorate", {}), commemorate)
-            except Exception:
-                pass
 
         # 叠加私有仓库同步下来的远程配置（网络引导项除外，避免循环依赖）
         overlay = self.data_dir / "config.json"
@@ -127,6 +115,7 @@ class ConfigManager:
     def reload(self):
         """同步完成后重新读取配置（用户 / 纪念信息可能已更新）"""
         self._load_data()
+        self.freeze_if_ended()
 
     def _load_local_state(self):
         if self.local_state_path.exists():
@@ -210,6 +199,7 @@ class ConfigManager:
             "commemorate": {
                 "date": "", "time": "",
                 "end_date": "", "end_time": "",
+                "active": True,
                 "title": "", "subtitle": ""
             },
             "remembered": {"username": "", "remember_me": False}
@@ -397,6 +387,25 @@ class ConfigManager:
         """判断是否已到结束时刻，供计时和本地模式共用。"""
         end = self.commemorative_end_datetime()
         return end is not None and (now or datetime.now()) >= end
+
+    @property
+    def commemoration_active(self):
+        """本地计时开关；False 表示项目已冻结且不再访问远程。"""
+        return self._data.get("commemorate", {}).get("active", True) is not False
+
+    def is_commemoration_frozen(self):
+        """优先读取本地冻结开关，不再解析结束日期。"""
+        return not self.commemoration_active
+
+    def freeze_if_ended(self, now=None):
+        """仅在仍启用时检查结束时刻，命中后持久化冻结状态。"""
+        if self.is_commemoration_frozen():
+            return True
+        if not self.is_commemoration_ended(now):
+            return False
+        self._data.setdefault("commemorate", {})["active"] = False
+        self.save()
+        return True
 
     @property
     def commemorative_title(self):

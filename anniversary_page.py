@@ -2358,12 +2358,20 @@ class AnniversaryRecordsPage:
         return f"{o['date'][5:]} {o['name']} · {extra}"
 
     def _build_occurrences(self) -> list:
-        """生成所有纪念日条目：支持 每年 / 每月 / 每 N 天，从起始日算起"""
+        """生成纪念日条目，并在配置了结束日期时截断到最后一天。"""
         today = date.today()
-        max_future = today + timedelta(days=365 * 2)
+        end = self.config.commemorative_end_datetime()
+        cutoff = end.date() if end is not None else None
+        # 结束后仍按结束日附近的时间范围生成，避免列表向未来延伸。
+        reference = min(today, cutoff) if cutoff is not None else today
+        max_future = cutoff or reference + timedelta(days=365 * 2)
         out = []
         for a in self.store.anniversaries:
-            out.extend(self._occurrences_for(a, today, max_future))
+            out.extend(self._occurrences_for(a, reference, max_future))
+        if cutoff is not None:
+            cutoff_text = cutoff.isoformat()
+            out = [occurrence for occurrence in out
+                   if occurrence["date"] <= cutoff_text]
         out.sort(key=lambda o: o["date"])
         # 同一纪念日同一天只保留一个
         seen = set()
