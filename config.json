@@ -26,5 +26,11 @@
     },
     "auth": {
         "mode": "local"
+    },
+    "commemorate": {
+        "date": "2026-07-14",
+        "time": "22:25",
+        "end_date": "2026-08-30",
+        "end_time": "20:39"
     }
 }

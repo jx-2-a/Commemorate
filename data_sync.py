@@ -127,13 +127,24 @@ class DataSyncManager(QObject):
     # ---------- 公开入口 ----------
 
     def pull(self, files=None):
+        """拉取远程内容；结束后仅保留本地缓存，不发起网络请求。"""
+        if self.config.is_commemoration_ended():
+            self._finish_local_only()
+            return
         self._start("pull", files or self.config.sync_files)
 
     def push(self, files=None):
+        """推送本地内容；本地模式下不读取或写入远程仓库。"""
+        if self.config.is_commemoration_ended():
+            self._finish_local_only()
+            return
         self._start("push", files or self.config.sync_push_files)
 
     def delete_files(self, files):
         """删除远程仓库中的文件（Contents API DELETE，清理不再需要的资源）"""
+        if self.config.is_commemoration_ended():
+            self._finish_local_only()
+            return
         self._mode = "delete"
         self._queue = list(files)
         self._total = len(self._queue)
@@ -141,6 +152,15 @@ class DataSyncManager(QObject):
         self._errors = []
         self._warnings = []
         QTimer.singleShot(0, self._next)
+
+    def _finish_local_only(self):
+        """在本地模式中异步报告完成，保持调用方事件循环兼容。"""
+        self._queue = []
+        self._done = 0
+        self._total = 0
+        self._errors = []
+        self._warnings = []
+        QTimer.singleShot(0, lambda: self.sync_done.emit(0, 0))
 
     def _start(self, mode, files):
         self._mode = mode
@@ -262,11 +282,13 @@ class DataSyncManager(QObject):
                 changed, missing = filter_changed(
                     self.config.data_dir, self._queue, remote_shas
                 )
-                # 纪念日内容目录 anniversary/（按纪念日+日期分文件夹）：
-                # 远程存在的文件若本地缺失或内容变化，一并拉取（兼容旧 records/ 布局）
+                # 纪念日和日常记录目录：远程存在的文件若本地缺失或内容变化，
+                # 一并拉取（records/ 是旧版纪念日布局）。
                 for path in sorted(
                         p for p in remote_shas
-                        if p.startswith("anniversary/") or p.startswith("records/")):
+                        if (p.startswith("anniversary/")
+                            or p.startswith("record/")
+                            or p.startswith("records/"))):
                     local = self.config.data_dir / path
                     if not local.exists() or git_blob_sha(local.read_bytes()) != remote_shas[path]:
                         if path not in changed:
@@ -575,6 +597,15 @@ class SyncWorker(QObject):
 
             # 在子线程内创建实例，确保网络对象绑定到本线程的事件循环
             cfg = ConfigManager(self._config_filename)
+            if cfg.is_commemoration_ended():
+                self.finished.emit({
+                    "success": True,
+                    "sync_errors": [],
+                    "sync_done": 0,
+                    "preflight": None,
+                    "preflight_error": None,
+                })
+                return
             mgr = DataSyncManager(cfg)
             loop = QEventLoop()
 
